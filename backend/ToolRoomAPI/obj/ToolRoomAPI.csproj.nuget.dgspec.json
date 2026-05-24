@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\serqa\\backend\\ToolRoomAPI\\ToolRoomAPI.csproj": {}
+    "C:\\Users\\serqa\\CNCToolRoom\\Bitirme-Projesi-2\\backend\\ToolRoomAPI\\ToolRoomAPI.csproj": {}
   },
   "projects": {
-    "C:\\Users\\serqa\\backend\\ToolRoomAPI\\ToolRoomAPI.csproj": {
+    "C:\\Users\\serqa\\CNCToolRoom\\Bitirme-Projesi-2\\backend\\ToolRoomAPI\\ToolRoomAPI.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\serqa\\backend\\ToolRoomAPI\\ToolRoomAPI.csproj",
+        "projectUniqueName": "C:\\Users\\serqa\\CNCToolRoom\\Bitirme-Projesi-2\\backend\\ToolRoomAPI\\ToolRoomAPI.csproj",
         "projectName": "ToolRoomAPI",
-        "projectPath": "C:\\Users\\serqa\\backend\\ToolRoomAPI\\ToolRoomAPI.csproj",
+        "projectPath": "C:\\Users\\serqa\\CNCToolRoom\\Bitirme-Projesi-2\\backend\\ToolRoomAPI\\ToolRoomAPI.csproj",
         "packagesPath": "C:\\Users\\serqa\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\serqa\\backend\\ToolRoomAPI\\obj\\",
+        "outputPath": "C:\\Users\\serqa\\CNCToolRoom\\Bitirme-Projesi-2\\backend\\ToolRoomAPI\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\serqa\\AppData\\Roaming\\NuGet\\NuGet.Config",
@@ -45,6 +45,10 @@
         "net8.0": {
           "targetAlias": "net8.0",
           "dependencies": {
+            "BCrypt.Net-Next": {
+              "target": "Package",
+              "version": "[4.2.0, )"
+            },
             "Microsoft.AspNetCore.OpenApi": {
               "target": "Package",
               "version": "[8.0.3, )"

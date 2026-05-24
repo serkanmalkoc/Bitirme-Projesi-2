@@ -1,9 +1,10 @@
 {
   "version": 2,
-  "dgSpecHash": "JoRTpRGRzao5R0yamOGIRiKuVThVKdAeo+msF9DFxVG4G13x7FYgTi+KzZ7zLAujC2JEjxmOYBzjkD9QlJDPJg==",
+  "dgSpecHash": "Gw2a80TzUE8J5Ta/z/f6Ch1Xk816dhxjXJ6WlM8m/Dom/RwUq6zihOQoQ0AlwkddfoksL6LI3pQBikMjm0EYpQ==",
   "success": true,
-  "projectFilePath": "C:\\Users\\serqa\\backend\\ToolRoomAPI\\ToolRoomAPI.csproj",
+  "projectFilePath": "C:\\Users\\serqa\\CNCToolRoom\\Bitirme-Projesi-2\\backend\\ToolRoomAPI\\ToolRoomAPI.csproj",
   "expectedPackageFiles": [
+    "C:\\Users\\serqa\\.nuget\\packages\\bcrypt.net-next\\4.2.0\\bcrypt.net-next.4.2.0.nupkg.sha512",
     "C:\\Users\\serqa\\.nuget\\packages\\humanizer.core\\2.14.1\\humanizer.core.2.14.1.nupkg.sha512",
     "C:\\Users\\serqa\\.nuget\\packages\\microsoft.aspnetcore.openapi\\8.0.3\\microsoft.aspnetcore.openapi.8.0.3.nupkg.sha512",
     "C:\\Users\\serqa\\.nuget\\packages\\microsoft.bcl.asyncinterfaces\\6.0.0\\microsoft.bcl.asyncinterfaces.6.0.0.nupkg.sha512",
