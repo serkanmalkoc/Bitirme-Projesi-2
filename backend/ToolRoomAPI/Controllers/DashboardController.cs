@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ToolRoomAPI.Data;
 
@@ -5,6 +6,7 @@ namespace ToolRoomAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class DashboardController : ControllerBase
     {
         private readonly ToolRoomDbContext _context;

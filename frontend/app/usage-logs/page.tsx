@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "@/app/services/api";
 
 type Tool = {
   id: number;
@@ -21,8 +21,7 @@ export default function UsageLogsPage() {
   const [logs, setLogs] = useState<UsageLog[]>([]);
 
   useEffect(() => {
-    axios
-      .get("https://localhost:7085/api/ToolUsageLog")
+api.get("/ToolUsageLog")
       .then((response) => {
         setLogs(response.data);
       })

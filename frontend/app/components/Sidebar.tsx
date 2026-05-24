@@ -62,10 +62,13 @@ export default function Sidebar() {
     router.push("/login");
   };
 
-  const menuItems = allMenuItems.filter((item) =>
-    user ? item.roles.includes(user.role) : false
-  );
+const userRole = user?.role?.toLowerCase();
 
+const menuItems = allMenuItems.filter((item) =>
+  userRole
+    ? item.roles.map((role) => role.toLowerCase()).includes(userRole)
+    : false
+);
   return (
     <aside className="w-72 bg-gray-900 text-white p-6 fixed h-screen">
       <h1 className="text-2xl font-bold mb-2">

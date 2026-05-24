@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ToolRoomAPI.Data;
@@ -7,6 +8,7 @@ namespace ToolRoomAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class ToolController : ControllerBase
     {
         private readonly ToolRoomDbContext _context;
@@ -41,6 +43,7 @@ namespace ToolRoomAPI.Controllers
 
         // Yeni takım ekler
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> CreateTool(Tool tool)
         {
             tool.RemainingLifeMinute = tool.TotalLifeMinute;
@@ -54,6 +57,7 @@ namespace ToolRoomAPI.Controllers
 
         // Takım günceller
         [HttpPut("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateTool(int id, Tool updatedTool)
         {
             var tool = await _context.Tools.FindAsync(id);
@@ -77,6 +81,7 @@ namespace ToolRoomAPI.Controllers
 
         // Takım siler
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteTool(int id)
         {
             var tool = await _context.Tools.FindAsync(id);

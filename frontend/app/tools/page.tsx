@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "@/app/services/api";
 import toast, { Toaster } from "react-hot-toast";
+import { useRouter } from "next/navigation";
 
 type Tool = {
   id: number;
@@ -22,6 +23,8 @@ type User = {
 };
 
 export default function ToolsPage() {
+  const router = useRouter(); 
+
   const [tools, setTools] = useState<Tool[]>([]);
   const [searchText, setSearchText] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -30,24 +33,22 @@ export default function ToolsPage() {
 
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
-  const deleteTool = async () => {
-    if (deleteId === null) return;
+  const confirmDelete = async () => {
+  if (deleteId === null) return;
 
-    try {
-      await axios.delete(
-        `https://localhost:7085/api/Tool/${deleteId}`
-      );
+  try {
+    await api.delete(`/Tool/${deleteId}`);
 
-      setTools(tools.filter((x) => x.id !== deleteId));
+    setTools(tools.filter((x) => x.id !== deleteId));
 
-      setDeleteId(null);
+    setDeleteId(null);
 
-      toast.success("Takım başarıyla silindi!");
-    } catch (error) {
-      console.error(error);
-      toast.error("Silme işlemi başarısız!");
-    }
-  };
+    toast.success("Takım başarıyla silindi!");
+  } catch (error) {
+    console.error(error);
+    toast.error("Silme işlemi başarısız!");
+  }
+};
 
 useEffect(() => {
   const storedUser = localStorage.getItem("user");
@@ -56,8 +57,7 @@ useEffect(() => {
     setUser(JSON.parse(storedUser));
   }
 
-  axios
-    .get("https://localhost:7085/api/Tool")
+api.get("/Tool")
     .then((response) => {
       setTools(response.data);
     })
@@ -264,12 +264,13 @@ useEffect(() => {
 
 {isAdmin && (
   <td className="p-4">
-    <a
-      href={`/tools/edit/${tool.id}`}
-      className="bg-blue-500 hover:bg-blue-700 text-white px-4 py-2 rounded-lg mr-2"
-    >
-      Düzenle
-    </a>
+<button
+  type="button"
+  onClick={() => router.push(`/tools/edit/${tool.id}`)}
+  className="bg-blue-500 hover:bg-blue-700 text-white px-4 py-2 rounded-lg mr-2"
+>
+  Düzenle
+</button>
 
     <button
       onClick={() => setDeleteId(tool.id)}
@@ -321,7 +322,7 @@ useEffect(() => {
                 </button>
 
                 <button
-                  onClick={deleteTool}
+onClick={confirmDelete}
                   className="bg-red-600 hover:bg-red-800 text-white px-5 py-3 rounded-xl font-bold"
                 >
                   Evet, Sil

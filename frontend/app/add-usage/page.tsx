@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "@/app/services/api";
 import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 
@@ -21,8 +21,8 @@ export default function AddUsagePage() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    axios
-      .get("https://localhost:7085/api/Tool")
+    api
+      .get("/Tool")
       .then((response) => {
         setTools(response.data);
       })
@@ -42,13 +42,10 @@ export default function AddUsagePage() {
     }
 
     try {
-      const response = await axios.post(
-        "https://localhost:7085/api/ToolUsageLog",
-        {
-          toolId: Number(toolId),
-          usedMinute: Number(usedMinute),
-        }
-      );
+      const response = await api.post("/ToolUsageLog", {
+        toolId: Number(toolId),
+        usedMinute: Number(usedMinute),
+      });
 
       setMessage(
         `${response.data.toolName} için ${response.data.usedMinute} dk kullanım kaydedildi. Kalan ömür: ${response.data.remainingLifeMinute} dk`

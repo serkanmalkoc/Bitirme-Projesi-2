@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "./services/api";
 
 import {
   Chart as ChartJS,
@@ -44,8 +44,7 @@ export default function HomePage() {
   const [tools, setTools] = useState<Tool[]>([]);
 
   useEffect(() => {
-    axios
-      .get("https://localhost:7085/api/Dashboard")
+api.get("/Dashboard")
       .then((response) => {
         setData(response.data);
       })
@@ -53,8 +52,7 @@ export default function HomePage() {
         console.error(error);
       });
 
-    axios
-      .get("https://localhost:7085/api/Tool")
+api.get("/Tool")
       .then((response) => {
         setTools(response.data);
       })

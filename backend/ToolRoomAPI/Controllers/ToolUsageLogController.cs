@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ToolRoomAPI.Data;
@@ -7,6 +8,7 @@ namespace ToolRoomAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class ToolUsageLogController : ControllerBase
     {
         private readonly ToolRoomDbContext _context;

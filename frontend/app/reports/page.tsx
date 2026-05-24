@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "@/app/services/api";
 
 type DashboardData = {
   totalTools: number;
@@ -33,8 +33,8 @@ export default function ReportsPage() {
   const [logs, setLogs] = useState<UsageLog[]>([]);
 
   useEffect(() => {
-    axios
-      .get("https://localhost:7085/api/Dashboard")
+    api
+      .get("/Dashboard")
       .then((response) => {
         setDashboard(response.data);
       })
@@ -42,8 +42,8 @@ export default function ReportsPage() {
         console.error(error);
       });
 
-    axios
-      .get("https://localhost:7085/api/Tool")
+    api
+      .get("/Tool")
       .then((response) => {
         setTools(response.data);
       })
@@ -51,8 +51,8 @@ export default function ReportsPage() {
         console.error(error);
       });
 
-    axios
-      .get("https://localhost:7085/api/ToolUsageLog")
+    api
+      .get("/ToolUsageLog")
       .then((response) => {
         setLogs(response.data);
       })
@@ -85,23 +85,23 @@ export default function ReportsPage() {
   return (
     <div className="min-h-screen bg-gray-100 p-10 print-area">
       <div className="flex justify-between items-center mb-10">
-  <div>
-    <h1 className="text-5xl font-bold text-gray-900">
-      Raporlar
-    </h1>
+        <div>
+          <h1 className="text-5xl font-bold text-gray-900">
+            Raporlar
+          </h1>
 
-    <p className="text-gray-500 mt-3 text-lg">
-      CNC takım stok, ömür ve kullanım raporları
-    </p>
-  </div>
+          <p className="text-gray-500 mt-3 text-lg">
+            CNC takım stok, ömür ve kullanım raporları
+          </p>
+        </div>
 
-  <button
-    onClick={() => window.print()}
-    className="no-print bg-gray-900 hover:bg-gray-700 text-white px-6 py-3 rounded-xl font-bold"
-  >
-    Raporu Yazdır
-  </button>
-</div>
+        <button
+          onClick={() => window.print()}
+          className="no-print bg-gray-900 hover:bg-gray-700 text-white px-6 py-3 rounded-xl font-bold"
+        >
+          Raporu Yazdır
+        </button>
+      </div>
 
       <div className="grid grid-cols-4 gap-6 mb-10">
         <div className="bg-white p-6 rounded-2xl shadow">
@@ -165,7 +165,10 @@ export default function ReportsPage() {
 
             <tbody>
               {criticalStockTools.map((tool) => (
-                <tr key={tool.id} className="border-b bg-red-50 font-semibold text-gray-900">
+                <tr
+                  key={tool.id}
+                  className="border-b bg-red-50 font-semibold text-gray-900"
+                >
                   <td className="p-4">{tool.toolName}</td>
                   <td className="p-4">{tool.toolType}</td>
                   <td className="p-4 text-red-600 font-bold">
@@ -202,7 +205,10 @@ export default function ReportsPage() {
 
             <tbody>
               {lowLifeTools.map((tool) => (
-                <tr key={tool.id} className="border-b bg-yellow-50 font-semibold text-gray-900">
+                <tr
+                  key={tool.id}
+                  className="border-b bg-yellow-50 font-semibold text-gray-900"
+                >
                   <td className="p-4">{tool.toolName}</td>
                   <td className="p-4 text-red-600 font-bold">
                     {tool.remainingLifeMinute} dk
@@ -242,7 +248,10 @@ export default function ReportsPage() {
 
           <tbody>
             {lastLogs.map((log) => (
-              <tr key={log.id} className="border-b font-semibold text-gray-900">
+              <tr
+                key={log.id}
+                className="border-b font-semibold text-gray-900"
+              >
                 <td className="p-4">{log.id}</td>
 
                 <td className="p-4">

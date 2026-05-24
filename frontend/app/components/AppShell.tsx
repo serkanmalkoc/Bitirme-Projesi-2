@@ -19,20 +19,50 @@ export default function AppShell({
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
 
-    if (!storedUser && !isLoginPage) {
-      router.push("/login");
+    if (!storedUser) {
+      if (!isLoginPage) {
+        router.replace("/login");
+      }
+
+      setIsChecking(false);
       return;
     }
 
-    if (storedUser && isLoginPage) {
-      router.push("/");
-      return;
-    }
+    try {
+      const user = JSON.parse(storedUser);
 
-    setIsChecking(false);
+      if (!user.token && !user.Token) {
+        localStorage.removeItem("user");
+
+        if (!isLoginPage) {
+          router.replace("/login");
+        }
+
+        setIsChecking(false);
+        return;
+      }
+
+      if (isLoginPage) {
+        router.replace("/");
+        setIsChecking(false);
+        return;
+      }
+
+      setIsChecking(false);
+    } catch (error) {
+      console.error(error);
+
+      localStorage.removeItem("user");
+
+      if (!isLoginPage) {
+        router.replace("/login");
+      }
+
+      setIsChecking(false);
+    }
   }, [pathname, router, isLoginPage]);
 
-  if (isChecking && !isLoginPage) {
+  if (isChecking) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="bg-white p-8 rounded-2xl shadow text-center">
