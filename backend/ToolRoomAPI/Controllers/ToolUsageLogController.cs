@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using ToolRoomAPI.Data;
+using ToolRoomAPI.Hubs;
 using ToolRoomAPI.Models;
 
 namespace ToolRoomAPI.Controllers
@@ -12,10 +14,14 @@ namespace ToolRoomAPI.Controllers
     public class ToolUsageLogController : ControllerBase
     {
         private readonly ToolRoomDbContext _context;
+        private readonly IHubContext<ToolRoomHub> _hubContext;
 
-        public ToolUsageLogController(ToolRoomDbContext context)
+        public ToolUsageLogController(
+            ToolRoomDbContext context,
+            IHubContext<ToolRoomHub> hubContext)
         {
             _context = context;
+            _hubContext = hubContext;
         }
 
         [HttpGet]
@@ -23,6 +29,7 @@ namespace ToolRoomAPI.Controllers
         {
             var logs = await _context.ToolUsageLogs
                 .Include(x => x.Tool)
+                .OrderByDescending(x => x.UsageDate)
                 .ToListAsync();
 
             return Ok(logs);
@@ -55,6 +62,19 @@ namespace ToolRoomAPI.Controllers
             _context.ToolUsageLogs.Add(log);
 
             await _context.SaveChangesAsync();
+
+            await _hubContext.Clients.All.SendAsync("ToolUsageAdded", new
+            {
+                ToolId = tool.Id,
+                ToolName = tool.ToolName,
+                ToolType = tool.ToolType,
+                UsedMinute = log.UsedMinute,
+                RemainingLifeMinute = tool.RemainingLifeMinute,
+                TotalLifeMinute = tool.TotalLifeMinute,
+                Stock = tool.Stock,
+                CriticalStock = tool.CriticalStock,
+                UsageDate = log.UsageDate
+            });
 
             return Ok(new
             {
