@@ -1,756 +1,506 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import api from "@/app/services/api";
-import connection from "@/app/services/signalr";
+import { useState } from "react";
+import axios from "axios";
+import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 
 import {
-  FileText,
-  Printer,
-  CalendarDays,
-  UserCircle,
-  Wrench,
-  AlertTriangle,
-  Timer,
-  Package,
-  Activity,
+  LockKeyhole,
+  User,
+  Eye,
+  EyeOff,
   ShieldCheck,
-  BarChart3,
+  Radio,
+  Database,
+  HelpCircle,
+  ChevronDown,
+  ChevronUp,
+  LogIn,
+  Factory,
+  Gauge,
   Clock3,
+  Activity,
 } from "lucide-react";
 
-type DashboardData = {
-  totalTools: number;
-  criticalStockTools: number;
-  lowLifeTools: number;
-};
+const faqItems = [
+  {
+    question: "Bu sistem ne işe yarar?",
+    answer:
+      "Bu sistem, CNC tezgahlarında kullanılan kesici takımların stok durumunu, kullanım ömrünü ve kullanım geçmişini takip etmek için geliştirilmiştir. Kullanım kaydı girildiğinde takımın kalan ömrü otomatik olarak azalır.",
+  },
+  {
+    question: "Hangi takımlar takip edilebilir?",
+    answer:
+      "Freze uçları, matkap uçları, elmas uçlar, torna uçları, kılavuzlar, raybalar ve benzeri CNC sarf malzemeleri sistem üzerinde takip edilebilir.",
+  },
+  {
+    question: "Kullanım kaydı girildiğinde ne olur?",
+    answer:
+      "Kullanıcı bir takım seçer ve kullanım süresini dakika olarak girer. Sistem bu süreyi ilgili takımın kalan ömründen düşer ve kullanım geçmişine yeni bir kayıt ekler.",
+  },
+  {
+    question: "Kritik stok nedir?",
+    answer:
+      "Kritik stok, takımın mevcut stok miktarının belirlenen kritik seviyeye eşit veya daha düşük olmasıdır. Sistem bu takımları uyarı olarak gösterir.",
+  },
+  {
+    question: "Admin ve Operator farkı nedir?",
+    answer:
+      "Admin kullanıcı takım ekleyebilir, silebilir, düzenleyebilir ve raporları görebilir. Operator kullanıcı ise takımları görüntüleyebilir, kullanım kaydı ekleyebilir ve kullanım geçmişini inceleyebilir.",
+  },
+  {
+    question: "Sistem gerçek zamanlı çalışır mı?",
+    answer:
+      "Evet. SignalR altyapısı sayesinde kullanım kaydı eklendiğinde ilgili takımın kalan ömrü sayfa yenilenmeden canlı olarak güncellenebilir.",
+  },
+];
 
-type Tool = {
-  id: number;
-  toolName: string;
-  toolType: string;
-  totalLifeMinute: number;
-  remainingLifeMinute: number;
-  stock: number;
-  criticalStock: number;
-};
+export default function LoginPage() {
+  const router = useRouter();
 
-type UsageLog = {
-  id: number;
-  toolId: number;
-  usedMinute: number;
-  usageDate: string;
-  tool?: Tool;
-};
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
-type User = {
-  id: number;
-  fullName: string;
-  username: string;
-  role: string;
-};
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-type ToolUsageAddedEvent = {
-  toolId: number;
-  toolName: string;
-  toolType: string;
-  usedMinute: number;
-  remainingLifeMinute: number;
-  totalLifeMinute: number;
-  stock: number;
-  criticalStock: number;
-  usageDate: string;
-};
+    if (!username.trim() || !password.trim()) {
+      toast.error("Kullanıcı adı ve şifre giriniz!");
+      return;
+    }
 
-export default function ReportsPage() {
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [tools, setTools] = useState<Tool[]>([]);
-  const [logs, setLogs] = useState<UsageLog[]>([]);
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const fetchReportData = async () => {
     try {
-      const [dashboardResponse, toolsResponse, logsResponse] =
-        await Promise.all([
-          api.get("/Dashboard"),
-          api.get("/Tool"),
-          api.get("/ToolUsageLog"),
-        ]);
+      setIsLoading(true);
 
-      setDashboard(dashboardResponse.data);
-      setTools(toolsResponse.data);
-      setLogs(logsResponse.data);
+      const response = await axios.post(
+        "https://localhost:7085/api/Auth/login",
+        {
+          username,
+          password,
+        }
+      );
+
+      localStorage.setItem("user", JSON.stringify(response.data));
+
+      toast.success("Giriş başarılı!");
+
+      setTimeout(() => {
+        router.push("/");
+      }, 800);
     } catch (error) {
       console.error(error);
-      toast.error("Rapor verileri yüklenemedi!");
+      toast.error("Kullanıcı adı veya şifre hatalı!");
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-
-    fetchReportData();
-  }, []);
-
-  useEffect(() => {
-    const startSignalR = async () => {
-      try {
-        if (connection.state === "Disconnected") {
-          await connection.start();
-          console.log("Reports SignalR bağlantısı kuruldu.");
-        }
-      } catch (error) {
-        console.error("SignalR bağlantı hatası:", error);
-      }
-    };
-
-    startSignalR();
-
-    connection.on("ToolUsageAdded", async (data: ToolUsageAddedEvent) => {
-      toast.success(
-        `${data.toolName} için kullanım eklendi. Rapor güncellendi.`
-      );
-
-      await fetchReportData();
-    });
-
-    return () => {
-      connection.off("ToolUsageAdded");
-    };
-  }, []);
-
-  const reportDate = new Date().toLocaleDateString("tr-TR", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    weekday: "long",
-  });
-
-  const reportTime = new Date().toLocaleTimeString("tr-TR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  const criticalStockTools = tools.filter(
-    (tool) => tool.stock <= tool.criticalStock
-  );
-
-  const lowLifeTools = tools.filter(
-    (tool) => tool.remainingLifeMinute < 200
-  );
-
-  const totalRemainingLife = tools.reduce(
-    (total, tool) => total + tool.remainingLifeMinute,
-    0
-  );
-
-  const totalLife = tools.reduce(
-    (total, tool) => total + tool.totalLifeMinute,
-    0
-  );
-
-  const totalUsedMinute =
-    totalLife > totalRemainingLife ? totalLife - totalRemainingLife : 0;
-
-  const averageLifePercent =
-    totalLife > 0
-      ? Math.round((totalRemainingLife / totalLife) * 100)
-      : 0;
-
-  const totalUsageMinute = logs.reduce(
-    (total, log) => total + log.usedMinute,
-    0
-  );
-
-  const lastLogs = logs.slice(0, 8);
-
-  const systemStatus =
-    criticalStockTools.length === 0 && lowLifeTools.length === 0
-      ? "Normal"
-      : criticalStockTools.length <= 2 && lowLifeTools.length <= 2
-      ? "Dikkat Gerektiriyor"
-      : "Kritik";
-
-  const systemStatusStyle =
-    systemStatus === "Normal"
-      ? "bg-green-100 text-green-700 border-green-200"
-      : systemStatus === "Dikkat Gerektiriyor"
-      ? "bg-yellow-100 text-yellow-700 border-yellow-200"
-      : "bg-red-100 text-red-700 border-red-200";
-
-  const handlePrint = () => {
-    window.print();
+  const fillAdmin = () => {
+    setUsername("admin");
+    setPassword("1234");
   };
 
-  if (isLoading) {
-    return (
-      <>
-        <Toaster position="top-right" />
-
-        <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-          <div className="bg-white px-10 py-8 rounded-3xl shadow text-center">
-            <h1 className="text-2xl font-black text-slate-900 mb-2">
-              Rapor hazırlanıyor...
-            </h1>
-
-            <p className="text-slate-600 font-medium">
-              Sistem verileri rapor formatına dönüştürülüyor.
-            </p>
-          </div>
-        </div>
-      </>
-    );
-  }
+  const fillOperator = () => {
+    setUsername("operator");
+    setPassword("1234");
+  };
 
   return (
     <>
       <Toaster position="top-right" />
 
-      <div className="min-h-screen bg-slate-100 p-10 print:bg-white print:p-0">
-        <div className="mb-8 print:hidden">
-          <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 rounded-3xl p-10 shadow-lg text-white relative overflow-hidden">
-            <div className="absolute -right-24 -top-24 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl" />
-            <div className="absolute right-40 bottom-0 w-52 h-52 bg-cyan-500/10 rounded-full blur-3xl" />
+      <div className="min-h-screen bg-slate-950 text-white relative overflow-hidden">
+        <div className="absolute inset-0 opacity-30 bg-[linear-gradient(to_right,#334155_1px,transparent_1px),linear-gradient(to_bottom,#334155_1px,transparent_1px)] bg-[size:56px_56px]" />
 
-            <div className="relative z-10 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-8">
-              <div>
-                <p className="text-blue-300 font-semibold mb-3">
-                  CNC Takım Yönetim Sistemi
-                </p>
+        <div className="absolute -top-40 -left-40 w-[520px] h-[520px] bg-blue-600/30 rounded-full blur-3xl" />
+        <div className="absolute top-40 -right-40 w-[520px] h-[520px] bg-cyan-500/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 left-1/2 w-[420px] h-[420px] bg-indigo-500/20 rounded-full blur-3xl" />
 
-                <h1 className="text-5xl font-black tracking-tight mb-4">
-                  Raporlar
-                </h1>
+        <div className="relative z-10 p-8">
+          <div className="w-full max-w-7xl mx-auto">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-stretch">
+              <div className="bg-white/10 backdrop-blur-xl border border-white/10 rounded-[2rem] p-10 lg:p-14 shadow-2xl flex flex-col justify-between min-h-[720px]">
+                <div>
+                  <div className="flex items-center gap-4 mb-10">
+                    <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-3xl flex items-center justify-center font-black text-2xl shadow-lg shadow-blue-950/40">
+                      TR
+                    </div>
 
-                <p className="text-slate-300 text-lg max-w-3xl leading-8">
-                  Takım stok durumu, kullanım ömrü ve kullanım geçmişi
-                  verilerini resmi rapor formatında görüntüleyin.
-                </p>
+                    <div>
+                      <h1 className="text-2xl font-black tracking-tight">
+                        Tool Room
+                      </h1>
+
+                      <p className="text-slate-400 font-semibold">
+                        CNC Takım Yönetim Sistemi
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mb-10">
+                    <p className="text-blue-300 font-black mb-4">
+                      Dijital Takım Takip Platformu
+                    </p>
+
+                    <h2 className="text-5xl lg:text-7xl font-black tracking-tight leading-tight mb-6">
+                      Akıllı CNC
+                      <br />
+                      Takım Yönetimi
+                    </h2>
+
+                    <p className="text-slate-300 text-lg leading-8 max-w-2xl">
+                      CNC takımlarının stok seviyesini, kritik stok uyarılarını,
+                      kullanım ömrünü ve kullanım geçmişini tek panelden takip
+                      etmek için geliştirilmiş modern yönetim sistemi.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+                    <div className="bg-slate-950/50 border border-white/10 rounded-3xl p-5">
+                      <div className="w-12 h-12 bg-blue-500/15 text-blue-300 rounded-2xl flex items-center justify-center mb-4">
+                        <ShieldCheck size={25} />
+                      </div>
+
+                      <p className="text-2xl font-black">JWT</p>
+
+                      <p className="text-slate-400 text-sm mt-2 font-semibold">
+                        Güvenli oturum
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-950/50 border border-white/10 rounded-3xl p-5">
+                      <div className="w-12 h-12 bg-green-500/15 text-green-300 rounded-2xl flex items-center justify-center mb-4">
+                        <Radio size={25} />
+                      </div>
+
+                      <p className="text-2xl font-black">Live</p>
+
+                      <p className="text-slate-400 text-sm mt-2 font-semibold">
+                        Anlık güncelleme
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-950/50 border border-white/10 rounded-3xl p-5">
+                      <div className="w-12 h-12 bg-purple-500/15 text-purple-300 rounded-2xl flex items-center justify-center mb-4">
+                        <Database size={25} />
+                      </div>
+
+                      <p className="text-2xl font-black">MySQL</p>
+
+                      <p className="text-slate-400 text-sm mt-2 font-semibold">
+                        Kalıcı veri
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-white/10 border border-white/10 rounded-3xl p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <Factory size={24} className="text-blue-300" />
+
+                      <h3 className="font-black text-lg">
+                        Üretim Odaklı
+                      </h3>
+                    </div>
+
+                    <p className="text-slate-300 leading-7 font-medium">
+                      Takım stokları, kritik seviyeler ve ömür değerleri üretim
+                      sürecine uygun şekilde izlenir.
+                    </p>
+                  </div>
+
+                  <div className="bg-white/10 border border-white/10 rounded-3xl p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <Gauge size={24} className="text-green-300" />
+
+                      <h3 className="font-black text-lg">
+                        Performans Takibi
+                      </h3>
+                    </div>
+
+                    <p className="text-slate-300 leading-7 font-medium">
+                      Dashboard, raporlar ve kullanım geçmişi ile takım durumu
+                      hızlıca analiz edilir.
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="bg-green-500 hover:bg-green-600 text-white px-7 py-4 rounded-2xl font-black transition flex items-center justify-center gap-3"
-              >
-                <Printer size={22} />
-                Yazdır / PDF Kaydet
-              </button>
-            </div>
+              <div className="bg-white text-slate-900 rounded-[2rem] p-8 lg:p-12 shadow-2xl">
+                <div className="mb-8">
+                  <div className="w-16 h-16 bg-slate-950 text-white rounded-3xl flex items-center justify-center mb-6">
+                    <LogIn size={30} />
+                  </div>
 
-            <div className="relative z-10 mt-8 border-t border-white/10 pt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <p className="text-slate-300 font-medium">
-                Bu sayfa yazdırma ekranından PDF olarak kaydedilebilir.
-              </p>
+                  <p className="text-blue-600 font-black mb-3">
+                    Giriş Paneli
+                  </p>
 
-              <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 text-green-300 px-5 py-3 rounded-2xl font-black">
-                <span className="w-3 h-3 bg-green-400 rounded-full shadow-lg shadow-green-500/50" />
-                Canlı rapor aktif
-              </div>
-            </div>
-          </div>
-        </div>
+                  <h2 className="text-4xl font-black mb-3">
+                    Hesabınıza giriş yapın
+                  </h2>
 
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden print:shadow-none print:border-0 print:rounded-none">
-          <div className="p-10 border-b border-slate-200 print:p-6">
-            <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-8">
-              <div>
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-16 h-16 bg-slate-950 text-white rounded-3xl flex items-center justify-center">
-                    <FileText size={32} />
+                  <p className="text-slate-600 font-medium leading-7">
+                    Devam etmek için kullanıcı adı ve şifrenizi giriniz. Sistem
+                    kullanıcı rolüne göre menüleri ve yetkileri otomatik düzenler.
+                  </p>
+                </div>
+
+                <form onSubmit={handleLogin} className="space-y-6">
+                  <div>
+                    <label className="block mb-2 font-black text-slate-900">
+                      Kullanıcı Adı
+                    </label>
+
+                    <div className="relative">
+                      <User
+                        size={22}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                      />
+
+                      <input
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        className="w-full border border-slate-300 bg-white text-slate-900 placeholder:text-slate-500 p-4 pl-12 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold"
+                        placeholder="admin veya operator"
+                        autoComplete="username"
+                      />
+                    </div>
                   </div>
 
                   <div>
-                    <p className="text-blue-600 font-black">
-                      Tool Room Management
-                    </p>
+                    <label className="block mb-2 font-black text-slate-900">
+                      Şifre
+                    </label>
 
-                    <h2 className="text-4xl font-black text-slate-900">
-                      CNC Takım Yönetim Raporu
-                    </h2>
-                  </div>
-                </div>
+                    <div className="relative">
+                      <LockKeyhole
+                        size={22}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                      />
 
-                <p className="text-slate-600 font-medium max-w-4xl leading-7">
-                  Bu rapor, sistemde kayıtlı CNC takımlarının stok durumunu,
-                  kullanım ömrünü, kritik seviyelerini ve son kullanım
-                  hareketlerini özetlemek amacıyla oluşturulmuştur.
-                </p>
-              </div>
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full border border-slate-300 bg-white text-slate-900 placeholder:text-slate-500 p-4 pl-12 pr-16 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold"
+                        placeholder="Şifrenizi giriniz"
+                        autoComplete="current-password"
+                      />
 
-              <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 min-w-[320px]">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <CalendarDays size={21} className="text-blue-600" />
-
-                    <div>
-                      <p className="text-slate-500 text-xs font-black uppercase">
-                        Rapor Tarihi
-                      </p>
-
-                      <p className="text-slate-900 font-black">
-                        {reportDate}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <Clock3 size={21} className="text-green-600" />
-
-                    <div>
-                      <p className="text-slate-500 text-xs font-black uppercase">
-                        Saat
-                      </p>
-
-                      <p className="text-slate-900 font-black">
-                        {reportTime}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <UserCircle size={21} className="text-purple-600" />
-
-                    <div>
-                      <p className="text-slate-500 text-xs font-black uppercase">
-                        Hazırlayan
-                      </p>
-
-                      <p className="text-slate-900 font-black">
-                        {user?.fullName || user?.username || "Sistem Kullanıcısı"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <ShieldCheck size={21} className="text-slate-700" />
-
-                    <div>
-                      <p className="text-slate-500 text-xs font-black uppercase">
-                        Kullanıcı Rolü
-                      </p>
-
-                      <p className="text-slate-900 font-black">
-                        {user?.role || "Admin"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-10 print:p-6">
-            <div className="mb-10">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-                <div>
-                  <h3 className="text-3xl font-black text-slate-900">
-                    Genel Sistem Özeti
-                  </h3>
-
-                  <p className="text-slate-600 font-medium mt-1">
-                    Sistemin anlık stok ve ömür durumu.
-                  </p>
-                </div>
-
-                <div
-                  className={`border px-5 py-3 rounded-2xl font-black ${systemStatusStyle}`}
-                >
-                  Sistem Durumu: {systemStatus}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 print:grid-cols-4 print:gap-4">
-                <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 print:p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-slate-600 font-bold">
-                      Toplam Takım
-                    </p>
-
-                    <Wrench size={24} className="text-slate-700" />
-                  </div>
-
-                  <h4 className="text-5xl font-black text-slate-900 print:text-3xl">
-                    {dashboard?.totalTools ?? tools.length}
-                  </h4>
-                </div>
-
-                <div className="bg-red-50 border border-red-100 rounded-3xl p-6 print:p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-red-700 font-bold">
-                      Kritik Stok
-                    </p>
-
-                    <AlertTriangle size={24} className="text-red-600" />
-                  </div>
-
-                  <h4 className="text-5xl font-black text-red-600 print:text-3xl">
-                    {dashboard?.criticalStockTools ??
-                      criticalStockTools.length}
-                  </h4>
-                </div>
-
-                <div className="bg-yellow-50 border border-yellow-100 rounded-3xl p-6 print:p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-yellow-700 font-bold">
-                      Kritik Ömür
-                    </p>
-
-                    <Timer size={24} className="text-yellow-700" />
-                  </div>
-
-                  <h4 className="text-5xl font-black text-yellow-700 print:text-3xl">
-                    {dashboard?.lowLifeTools ?? lowLifeTools.length}
-                  </h4>
-                </div>
-
-                <div className="bg-blue-50 border border-blue-100 rounded-3xl p-6 print:p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-blue-700 font-bold">
-                      Ortalama Ömür
-                    </p>
-
-                    <BarChart3 size={24} className="text-blue-700" />
-                  </div>
-
-                  <h4 className="text-5xl font-black text-blue-700 print:text-3xl">
-                    %{averageLifePercent}
-                  </h4>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-10 print:grid-cols-3 print:gap-4">
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 print:p-4">
-                <p className="text-slate-600 font-bold">
-                  Toplam Kalan Ömür
-                </p>
-
-                <h4 className="text-4xl font-black text-slate-900 mt-2 print:text-2xl">
-                  {totalRemainingLife} dk
-                </h4>
-
-                <p className="text-slate-500 text-sm font-medium mt-2">
-                  Tüm takımların toplam kullanılabilir süresi.
-                </p>
-              </div>
-
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 print:p-4">
-                <p className="text-slate-600 font-bold">
-                  Toplam Kullanılmış Ömür
-                </p>
-
-                <h4 className="text-4xl font-black text-slate-900 mt-2 print:text-2xl">
-                  {totalUsedMinute} dk
-                </h4>
-
-                <p className="text-slate-500 text-sm font-medium mt-2">
-                  Toplam ömürden düşen kullanım miktarı.
-                </p>
-              </div>
-
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 print:p-4">
-                <p className="text-slate-600 font-bold">
-                  Kullanım Kayıt Süresi
-                </p>
-
-                <h4 className="text-4xl font-black text-slate-900 mt-2 print:text-2xl">
-                  {totalUsageMinute} dk
-                </h4>
-
-                <p className="text-slate-500 text-sm font-medium mt-2">
-                  Kullanım geçmişine işlenen toplam dakika.
-                </p>
-              </div>
-            </div>
-
-            <div className="mb-10">
-              <div className="flex items-center gap-3 mb-5">
-                <Package size={26} className="text-red-600" />
-
-                <div>
-                  <h3 className="text-2xl font-black text-slate-900">
-                    Kritik Stok Raporu
-                  </h3>
-
-                  <p className="text-slate-600 font-medium">
-                    Stok miktarı kritik seviyeye düşen takımlar.
-                  </p>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto border border-slate-200 rounded-3xl">
-                <table className="w-full min-w-[800px]">
-                  <thead className="bg-slate-950 text-white">
-                    <tr>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        ID
-                      </th>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Takım Adı
-                      </th>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Tip
-                      </th>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Mevcut Stok
-                      </th>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Kritik Stok
-                      </th>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Durum
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {criticalStockTools.map((tool) => (
-                      <tr
-                        key={tool.id}
-                        className="border-b border-slate-100"
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 bg-slate-100 hover:bg-slate-200 text-slate-700 w-10 h-10 rounded-xl font-bold text-sm transition flex items-center justify-center"
                       >
-                        <td className="px-4 py-4 font-black text-slate-500">
-                          #{tool.id}
-                        </td>
+                        {showPassword ? (
+                          <EyeOff size={20} />
+                        ) : (
+                          <Eye size={20} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
 
-                        <td className="px-4 py-4 font-black text-slate-900">
-                          {tool.toolName}
-                        </td>
-
-                        <td className="px-4 py-4 text-slate-700 font-semibold">
-                          {tool.toolType}
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <span className="bg-red-100 text-red-700 px-3 py-2 rounded-xl font-black">
-                            {tool.stock}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-4 font-black text-slate-800">
-                          {tool.criticalStock}
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <span className="bg-red-100 text-red-700 px-3 py-2 rounded-xl font-black text-sm">
-                            Kritik Stok
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-
-                    {criticalStockTools.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-4 py-8 text-center text-green-700 font-black"
-                        >
-                          Kritik stokta takım bulunmamaktadır.
-                        </td>
-                      </tr>
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white p-4 rounded-2xl font-black transition shadow-lg shadow-blue-200 flex items-center justify-center gap-3"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Clock3 size={21} />
+                        Giriş yapılıyor...
+                      </>
+                    ) : (
+                      <>
+                        <LogIn size={21} />
+                        Giriş Yap
+                      </>
                     )}
-                  </tbody>
-                </table>
+                  </button>
+                </form>
+
+                <div className="mt-8">
+                  <h3 className="text-slate-900 font-black mb-4">
+                    Hızlı Test Kullanıcıları
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      onClick={fillAdmin}
+                      className="text-left bg-blue-50 border border-blue-100 hover:border-blue-400 hover:bg-blue-100 rounded-3xl p-5 transition"
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <p className="text-blue-700 font-black text-xl">
+                          Admin
+                        </p>
+
+                        <ShieldCheck size={24} className="text-blue-700" />
+                      </div>
+
+                      <p className="text-slate-700 text-sm font-semibold">
+                        Kullanıcı adı: admin
+                      </p>
+
+                      <p className="text-slate-700 text-sm font-semibold mt-1">
+                        Şifre: 1234
+                      </p>
+
+                      <p className="text-slate-500 text-xs mt-4 leading-5">
+                        Takım ekleme, silme, düzenleme ve rapor ekranlarına erişebilir.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={fillOperator}
+                      className="text-left bg-green-50 border border-green-100 hover:border-green-400 hover:bg-green-100 rounded-3xl p-5 transition"
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <p className="text-green-700 font-black text-xl">
+                          Operator
+                        </p>
+
+                        <Activity size={24} className="text-green-700" />
+                      </div>
+
+                      <p className="text-slate-700 text-sm font-semibold">
+                        Kullanıcı adı: operator
+                      </p>
+
+                      <p className="text-slate-700 text-sm font-semibold mt-1">
+                        Şifre: 1234
+                      </p>
+
+                      <p className="text-slate-500 text-xs mt-4 leading-5">
+                        Takımları görüntüleyebilir, kullanım kaydı ekleyebilir ve geçmiş kayıtları inceleyebilir.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-8 bg-slate-950 text-white rounded-3xl p-6">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-black">
+                        Güvenli Oturum Yönetimi
+                      </p>
+
+                      <p className="text-slate-300 text-sm mt-1 leading-6">
+                        Şifreler BCrypt ile saklanır, giriş sonrası JWT token
+                        oluşturulur ve API isteklerinde kullanılır.
+                      </p>
+                    </div>
+
+                    <div className="w-12 h-12 bg-green-500/20 text-green-300 rounded-2xl flex items-center justify-center font-black">
+                      <ShieldCheck size={25} />
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-center text-slate-500 text-sm mt-8 font-medium">
+                  Amasya Üniversitesi • Bitirme Projesi • Tool Room Management
+                </p>
               </div>
             </div>
 
-            <div className="mb-10">
-              <div className="flex items-center gap-3 mb-5">
-                <Timer size={26} className="text-yellow-700" />
+            <div className="mt-8 bg-white text-slate-900 rounded-[2rem] shadow-2xl p-8 lg:p-10">
+              <div className="mb-8">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-blue-50 text-blue-700 rounded-2xl flex items-center justify-center">
+                    <HelpCircle size={25} />
+                  </div>
 
-                <div>
-                  <h3 className="text-2xl font-black text-slate-900">
-                    Kritik Ömür Raporu
-                  </h3>
-
-                  <p className="text-slate-600 font-medium">
-                    Kalan ömrü 200 dakikanın altına düşen takımlar.
+                  <p className="text-blue-600 font-black">
+                    Sıkça Sorulan Sorular
                   </p>
                 </div>
+
+                <h2 className="text-4xl font-black text-slate-900 mb-3">
+                  Bu sistem ne işe yarar?
+                </h2>
+
+                <p className="text-slate-600 font-medium max-w-5xl leading-8">
+                  Tool Room Management sistemi, CNC takımlarının stok, kullanım
+                  ömrü ve kullanım geçmişini dijital ortamda takip etmek için
+                  geliştirilmiştir. Sistem, takım ömrünü dakika bazlı izler,
+                  kritik stok durumlarını gösterir ve kullanıcı rollerine göre
+                  güvenli erişim sağlar.
+                </p>
               </div>
 
-              <div className="overflow-x-auto border border-slate-200 rounded-3xl">
-                <table className="w-full min-w-[850px]">
-                  <thead className="bg-slate-950 text-white">
-                    <tr>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        ID
-                      </th>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Takım Adı
-                      </th>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Tip
-                      </th>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Kalan Ömür
-                      </th>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Toplam Ömür
-                      </th>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Yüzde
-                      </th>
-                    </tr>
-                  </thead>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {faqItems.map((item, index) => {
+                  const isOpen = openFaqIndex === index;
 
-                  <tbody>
-                    {lowLifeTools.map((tool) => {
-                      const lifePercent =
-                        tool.totalLifeMinute > 0
-                          ? Math.round(
-                              (tool.remainingLifeMinute /
-                                tool.totalLifeMinute) *
-                                100
-                            )
-                          : 0;
-
-                      return (
-                        <tr
-                          key={tool.id}
-                          className="border-b border-slate-100"
-                        >
-                          <td className="px-4 py-4 font-black text-slate-500">
-                            #{tool.id}
-                          </td>
-
-                          <td className="px-4 py-4 font-black text-slate-900">
-                            {tool.toolName}
-                          </td>
-
-                          <td className="px-4 py-4 text-slate-700 font-semibold">
-                            {tool.toolType}
-                          </td>
-
-                          <td className="px-4 py-4">
-                            <span className="bg-yellow-100 text-yellow-700 px-3 py-2 rounded-xl font-black">
-                              {tool.remainingLifeMinute} dk
-                            </span>
-                          </td>
-
-                          <td className="px-4 py-4 font-black text-slate-800">
-                            {tool.totalLifeMinute} dk
-                          </td>
-
-                          <td className="px-4 py-4 font-black text-yellow-700">
-                            %{lifePercent}
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                    {lowLifeTools.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-4 py-8 text-center text-green-700 font-black"
-                        >
-                          Kritik ömürlü takım bulunmamaktadır.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center gap-3 mb-5">
-                <Activity size={26} className="text-blue-700" />
-
-                <div>
-                  <h3 className="text-2xl font-black text-slate-900">
-                    Son Kullanım Kayıtları
-                  </h3>
-
-                  <p className="text-slate-600 font-medium">
-                    Sisteme girilen en güncel kullanım hareketleri.
-                  </p>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto border border-slate-200 rounded-3xl">
-                <table className="w-full min-w-[850px]">
-                  <thead className="bg-slate-950 text-white">
-                    <tr>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Kayıt ID
-                      </th>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Takım
-                      </th>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Kullanım
-                      </th>
-                      <th className="px-4 py-4 text-left text-xs uppercase">
-                        Tarih
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {lastLogs.map((log) => (
-                      <tr
-                        key={log.id}
-                        className="border-b border-slate-100"
+                  return (
+                    <div
+                      key={item.question}
+                      className={`border rounded-3xl transition ${
+                        isOpen
+                          ? "border-blue-300 bg-blue-50"
+                          : "border-slate-200 bg-white hover:bg-slate-50"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenFaqIndex(isOpen ? null : index)
+                        }
+                        className="w-full text-left p-6 flex items-center justify-between gap-4"
                       >
-                        <td className="px-4 py-4 font-black text-slate-500">
-                          #{log.id}
-                        </td>
+                        <span className="text-slate-900 font-black text-lg">
+                          {item.question}
+                        </span>
 
-                        <td className="px-4 py-4 font-black text-slate-900">
-                          {log.tool?.toolName || `Takım #${log.toolId}`}
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <span className="bg-blue-100 text-blue-700 px-3 py-2 rounded-xl font-black">
-                            {log.usedMinute} dk
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-4 text-slate-700 font-semibold">
-                          {new Date(log.usageDate).toLocaleString("tr-TR")}
-                        </td>
-                      </tr>
-                    ))}
-
-                    {lastLogs.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="px-4 py-8 text-center text-slate-600 font-black"
+                        <span
+                          className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black transition ${
+                            isOpen
+                              ? "bg-blue-600 text-white"
+                              : "bg-slate-100 text-slate-700"
+                          }`}
                         >
-                          Henüz kullanım kaydı bulunmamaktadır.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                          {isOpen ? (
+                            <ChevronUp size={20} />
+                          ) : (
+                            <ChevronDown size={20} />
+                          )}
+                        </span>
+                      </button>
+
+                      {isOpen && (
+                        <div className="px-6 pb-6">
+                          <p className="text-slate-700 font-medium leading-7">
+                            {item.answer}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            </div>
 
-            <div className="mt-10 bg-slate-950 text-white rounded-3xl p-7 print:bg-white print:text-slate-900 print:border print:border-slate-300">
-              <h3 className="text-2xl font-black mb-3">
-                Rapor Değerlendirmesi
-              </h3>
+              <div className="mt-8 bg-slate-950 rounded-3xl p-7 text-white">
+                <h3 className="text-2xl font-black mb-3">
+                  Projenin Temel Avantajı
+                </h3>
 
-              <p className="text-slate-300 print:text-slate-700 leading-8 font-medium">
-                Sistemde toplam {tools.length} takım kayıtlıdır. Kritik stokta{" "}
-                {criticalStockTools.length} takım, kritik ömür seviyesinde ise{" "}
-                {lowLifeTools.length} takım bulunmaktadır. Ortalama kalan takım
-                ömrü %{averageLifePercent} seviyesindedir. Bu rapor, CNC takım
-                yönetiminin dijital ortamda takip edilmesini ve stok/ömür
-                problemlerinin erken fark edilmesini sağlar.
-              </p>
+                <p className="text-slate-300 leading-8 font-medium">
+                  Bu sistem sayesinde CNC takımları manuel takip yerine dijital
+                  ortamda izlenir. Takım ömrü, stok durumu ve kullanım geçmişi
+                  düzenli şekilde kayıt altında tutulur. Böylece üretim
+                  sürecinde takım kaynaklı hatalar ve stok eksiklikleri daha
+                  erken fark edilebilir.
+                </p>
+              </div>
             </div>
           </div>
         </div>
