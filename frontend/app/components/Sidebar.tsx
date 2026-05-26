@@ -41,7 +41,7 @@ type MenuItem = {
 
 const allMenuItems: MenuItem[] = [
   {
-    title: "Dashboard",
+    title: "Ana Sayfa",
     href: "/",
     icon: Home,
     roles: ["Admin", "Operator"],

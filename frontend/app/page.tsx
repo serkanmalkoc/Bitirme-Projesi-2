@@ -608,17 +608,18 @@ export default function HomePage() {
                 </span>
               </div>
 
-              <h1 className="text-3xl xl:text-4xl font-black tracking-tight">
-                Operasyon ve Tablo Paneli
-              </h1>
+<h1 className="text-3xl xl:text-4xl font-black tracking-tight">
+  CNC Takım Yönetim Paneli
+</h1>
 
-              <p className="text-slate-400 font-medium mt-2 max-w-3xl">
-                Hoş geldiniz,{" "}
-                <span className="text-white font-black">
-                  {user?.fullName || user?.username || "Kullanıcı"}
-                </span>
-                . Kartlar ve tablolar sekmeli yapıda daha düzenli gösterilir.
-              </p>
+<p className="text-slate-400 font-medium mt-2 max-w-3xl leading-7">
+  Hoş geldiniz,{" "}
+  <span className="text-white font-black">
+    {user?.fullName || user?.username || "Kullanıcı"}
+  </span>
+  . Bu panel üzerinden takım ömrü, stok durumu, bakım planları,
+  satın alma ihtiyaçları ve üretim süreçleri anlık olarak takip edilir.
+</p>
             </div>
 
             <div className="grid grid-cols-2 gap-3 min-w-[330px]">
