@@ -30,6 +30,25 @@ namespace ToolRoomAPI.Controllers
             var logs = await _context.ToolUsageLogs
                 .Include(x => x.Tool)
                 .OrderByDescending(x => x.UsageDate)
+                .Select(x => new
+                {
+                    id = x.Id,
+                    toolId = x.ToolId,
+                    usedMinute = x.UsedMinute,
+                    usageDate = x.UsageDate,
+                    tool = new
+                    {
+                        id = x.Tool.Id,
+                        toolName = x.Tool.ToolName,
+                        toolType = x.Tool.ToolType,
+                        totalLifeMinute = x.Tool.TotalLifeMinute,
+                        remainingLifeMinute = x.Tool.RemainingLifeMinute,
+                        stock = x.Tool.Stock,
+                        criticalStock = x.Tool.CriticalStock,
+                        isRunning = x.Tool.IsRunning,
+                        startedAt = x.Tool.StartedAt
+                    }
+                })
                 .ToListAsync();
 
             return Ok(logs);
@@ -57,6 +76,13 @@ namespace ToolRoomAPI.Controllers
 
             tool.RemainingLifeMinute -= log.UsedMinute;
 
+            if (tool.RemainingLifeMinute <= 0)
+            {
+                tool.RemainingLifeMinute = 0;
+                tool.IsRunning = false;
+                tool.StartedAt = null;
+            }
+
             log.UsageDate = DateTime.Now;
 
             _context.ToolUsageLogs.Add(log);
@@ -73,16 +99,20 @@ namespace ToolRoomAPI.Controllers
                 TotalLifeMinute = tool.TotalLifeMinute,
                 Stock = tool.Stock,
                 CriticalStock = tool.CriticalStock,
+                IsRunning = tool.IsRunning,
+                StartedAt = tool.StartedAt,
                 UsageDate = log.UsageDate
             });
 
             return Ok(new
             {
-                Message = "Kullanım kaydı eklendi ve takım ömrü güncellendi.",
-                ToolName = tool.ToolName,
-                UsedMinute = log.UsedMinute,
-                RemainingLifeMinute = tool.RemainingLifeMinute,
-                StockWarning = tool.Stock <= tool.CriticalStock
+                message = "Kullanım kaydı eklendi ve takım ömrü güncellendi.",
+                toolId = tool.Id,
+                toolName = tool.ToolName,
+                usedMinute = log.UsedMinute,
+                remainingLifeMinute = tool.RemainingLifeMinute,
+                isRunning = tool.IsRunning,
+                stockWarning = tool.Stock <= tool.CriticalStock
                     ? "Kritik stok seviyesi!"
                     : "Stok durumu normal"
             });
@@ -95,6 +125,25 @@ namespace ToolRoomAPI.Controllers
                 .Include(x => x.Tool)
                 .Where(x => x.ToolId == toolId)
                 .OrderByDescending(x => x.UsageDate)
+                .Select(x => new
+                {
+                    id = x.Id,
+                    toolId = x.ToolId,
+                    usedMinute = x.UsedMinute,
+                    usageDate = x.UsageDate,
+                    tool = new
+                    {
+                        id = x.Tool.Id,
+                        toolName = x.Tool.ToolName,
+                        toolType = x.Tool.ToolType,
+                        totalLifeMinute = x.Tool.TotalLifeMinute,
+                        remainingLifeMinute = x.Tool.RemainingLifeMinute,
+                        stock = x.Tool.Stock,
+                        criticalStock = x.Tool.CriticalStock,
+                        isRunning = x.Tool.IsRunning,
+                        startedAt = x.Tool.StartedAt
+                    }
+                })
                 .ToListAsync();
 
             return Ok(logs);

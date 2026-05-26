@@ -1,3 +1,4 @@
+using ToolRoomAPI.Services;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -96,6 +97,8 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 builder.Services.AddSignalR();
+
+builder.Services.AddHostedService<ToolLifeBackgroundService>();
 
 var app = builder.Build();
 

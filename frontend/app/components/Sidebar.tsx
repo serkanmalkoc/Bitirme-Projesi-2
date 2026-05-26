@@ -1,72 +1,86 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-
+import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard,
-  Wrench,
-  PlusCircle,
-  Clock3,
-  History,
-  FileText,
-  LogOut,
-  UserCircle,
-  ShieldCheck,
   Activity,
-  ChevronRight,
+  BarChart3,
+  Bell,
+  ClipboardList,
+  Home,
+  LogOut,
+  Menu,
+  Package,
+  ShieldAlert,
+  ShoppingCart,
+  User,
+  Wallet,
+  Wrench,
+  X,
+  ClipboardCheck,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 
-type User = {
-  id: number;
-  fullName: string;
-  username: string;
-  role: string;
+type UserInfo = {
+  id?: number;
+  fullName?: string;
+  username?: string;
+  role?: string;
+  token?: string;
+  Token?: string;
+  accessToken?: string;
+  AccessToken?: string;
 };
 
-const allMenuItems = [
+type MenuItem = {
+  title: string;
+  href: string;
+  icon: React.ElementType;
+  roles?: string[];
+};
+
+const allMenuItems: MenuItem[] = [
   {
     title: "Dashboard",
     href: "/",
-    roles: ["admin", "operator"],
-    icon: LayoutDashboard,
-    description: "Genel durum",
+    icon: Home,
+    roles: ["Admin", "Operator"],
   },
   {
     title: "Takımlar",
     href: "/tools",
-    roles: ["admin", "operator"],
     icon: Wrench,
-    description: "Takım listesi",
+    roles: ["Admin", "Operator"],
   },
   {
-    title: "Takım Ekle",
-    href: "/tools/create",
-    roles: ["admin"],
-    icon: PlusCircle,
-    description: "Yeni takım kaydı",
-  },
-  {
-    title: "Kullanım Ekle",
-    href: "/add-usage",
-    roles: ["admin", "operator"],
-    icon: Clock3,
-    description: "Takım ömrü düşür",
-  },
-  {
-    title: "Kullanım Geçmişi",
+    title: "Kullanım Kayıtları",
     href: "/usage-logs",
-    roles: ["admin", "operator"],
-    icon: History,
-    description: "Geçmiş kayıtlar",
+    icon: ClipboardList,
+    roles: ["Admin", "Operator"],
+  },
+  {
+    title: "Uyarılar",
+    href: "/alerts",
+    icon: ShieldAlert,
+    roles: ["Admin", "Operator"],
+  },
+  {
+    title: "Satın Alma",
+    href: "/purchases",
+    icon: ShoppingCart,
+    roles: ["Admin"],
+  },
+  {
+  title: "Bakım Planları",
+  href: "/maintenance",
+  icon: ClipboardCheck,
+  roles: ["Admin", "Operator"],
   },
   {
     title: "Raporlar",
     href: "/reports",
-    roles: ["admin"],
-    icon: FileText,
-    description: "Analiz ve çıktı",
+    icon: BarChart3,
+    roles: ["Admin", "Operator"],
   },
 ];
 
@@ -74,182 +88,180 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserInfo | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
 
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    if (!storedUser) {
+      setUser(null);
+      return;
+    }
+
+    try {
+      const parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
+    } catch {
+      localStorage.removeItem("user");
+      setUser(null);
     }
   }, []);
 
-  const logout = () => {
+  const userRole = user?.role || "";
+
+  const menuItems = allMenuItems.filter((item) => {
+    if (!item.roles || item.roles.length === 0) {
+      return true;
+    }
+
+    if (!userRole) {
+      return false;
+    }
+
+    return item.roles
+      .map((role) => role.toLowerCase())
+      .includes(userRole.toLowerCase());
+  });
+
+  const handleLogout = () => {
     localStorage.removeItem("user");
     router.push("/login");
   };
-
-  const userRole = user?.role?.toLowerCase();
-
-  const menuItems = allMenuItems.filter((item) =>
-    userRole ? item.roles.includes(userRole) : false
-  );
 
   const isActiveMenu = (href: string) => {
     if (href === "/") {
       return pathname === "/";
     }
 
-    return pathname === href || pathname.startsWith(`${href}/`);
+    return pathname.startsWith(href);
   };
 
-  const roleLabel =
-    userRole === "admin"
-      ? "Admin Yetkisi"
-      : userRole === "operator"
-      ? "Operator Yetkisi"
-      : "Kullanıcı";
-
-  const roleStyle =
-    userRole === "admin"
-      ? "bg-blue-500/15 text-blue-300 border-blue-500/20"
-      : "bg-green-500/15 text-green-300 border-green-500/20";
-
   return (
-    <aside className="w-80 bg-slate-950 text-white fixed h-screen p-5 flex flex-col border-r border-slate-800">
-      <div className="mb-7">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-2xl flex items-center justify-center font-black text-2xl shadow-lg shadow-blue-950/40">
-            TR
-          </div>
+    <>
+      <button
+        onClick={() => setIsOpen(true)}
+        className="lg:hidden fixed top-5 left-5 z-50 bg-slate-950 text-white w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg"
+      >
+        <Menu size={24} />
+      </button>
 
-          <div>
-            <h1 className="text-2xl font-black tracking-tight">
-              Tool Room
-            </h1>
-
-            <p className="text-slate-400 text-sm font-medium mt-1">
-              CNC Yönetim Paneli
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {user && (
-        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 mb-6 shadow-lg shadow-black/10">
-          <div className="flex items-center justify-between mb-5">
-            <p className="text-slate-500 text-xs font-black uppercase tracking-wider">
-              Oturum Bilgisi
-            </p>
-
-            <ShieldCheck size={20} className="text-green-400" />
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-700 flex items-center justify-center border border-slate-700">
-              <UserCircle size={30} className="text-blue-300" />
-            </div>
-
-            <div className="min-w-0">
-              <p className="font-black text-white truncate">
-                {user.fullName || "Kullanıcı"}
-              </p>
-
-              <p className="text-slate-400 text-sm truncate mt-1">
-                @{user.username}
-              </p>
-            </div>
-          </div>
-
-          <div
-            className={`mt-5 border rounded-2xl px-4 py-3 text-sm font-black w-fit ${roleStyle}`}
-          >
-            {roleLabel}
-          </div>
-        </div>
+      {isOpen && (
+        <div
+          onClick={() => setIsOpen(false)}
+          className="lg:hidden fixed inset-0 bg-black/40 z-40"
+        />
       )}
 
-      <nav className="space-y-2 flex-1 overflow-y-auto pr-1">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = isActiveMenu(item.href);
+      <aside
+        className={`fixed left-0 top-0 z-50 h-screen w-[290px] bg-slate-950 text-white shadow-2xl transition-transform duration-300 ${
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        } lg:translate-x-0`}
+      >
+        <div className="h-full flex flex-col">
+          <div className="p-6 border-b border-white/10">
+            <div className="flex items-center justify-between gap-4">
+              <Link
+                href="/"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center gap-3"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/30">
+                  <Activity size={25} />
+                </div>
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`group flex items-center justify-between gap-3 p-4 rounded-2xl font-bold transition border ${
-                isActive
-                  ? "bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-950/40"
-                  : "bg-slate-900/50 text-slate-300 border-slate-800 hover:bg-slate-800 hover:text-white"
-              }`}
-            >
-              <div className="flex items-center gap-4 min-w-0">
-                <div
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center transition ${
-                    isActive
-                      ? "bg-white/20 text-white"
-                      : "bg-slate-800 text-slate-400 group-hover:text-white group-hover:bg-slate-700"
-                  }`}
-                >
-                  <Icon size={23} />
+                <div>
+                  <h1 className="text-xl font-black leading-tight">
+                    CNC ToolRoom
+                  </h1>
+
+                  <p className="text-xs text-slate-400 font-semibold">
+                    Yönetim Paneli
+                  </p>
+                </div>
+              </Link>
+
+              <button
+                onClick={() => setIsOpen(false)}
+                className="lg:hidden w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center"
+              >
+                <X size={22} />
+              </button>
+            </div>
+          </div>
+
+          <div className="p-5 border-b border-white/10">
+            <div className="bg-white/10 border border-white/10 rounded-3xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center text-blue-300">
+                  <User size={22} />
                 </div>
 
                 <div className="min-w-0">
-                  <p className="leading-tight truncate">
-                    {item.title}
+                  <p className="font-black truncate">
+                    {user?.fullName || user?.username || "Kullanıcı"}
                   </p>
 
-                  <p
-                    className={`text-xs mt-1 font-semibold truncate ${
-                      isActive ? "text-blue-100" : "text-slate-500"
-                    }`}
-                  >
-                    {item.description}
+                  <p className="text-sm text-slate-400 font-semibold">
+                    {user?.role || "Rol yok"}
                   </p>
                 </div>
               </div>
-
-              <ChevronRight
-                size={19}
-                className={`transition ${
-                  isActive
-                    ? "text-white"
-                    : "text-slate-600 group-hover:text-slate-300"
-                }`}
-              />
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div className="mt-6 space-y-4">
-        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-slate-500 text-xs font-black uppercase tracking-wider">
-                Sistem Durumu
-              </p>
-
-              <p className="text-green-400 font-black mt-1">
-                Aktif ve Çalışıyor
-              </p>
-            </div>
-
-            <div className="w-12 h-12 rounded-2xl bg-green-500/10 flex items-center justify-center">
-              <Activity size={24} className="text-green-400" />
             </div>
           </div>
-        </div>
 
-        <button
-          onClick={logout}
-          className="w-full bg-red-600 hover:bg-red-700 text-white p-4 rounded-2xl font-black transition shadow-lg shadow-red-950/30 flex items-center justify-center gap-3"
-        >
-          <LogOut size={22} />
-          Çıkış Yap
-        </button>
-      </div>
-    </aside>
+          <nav className="flex-1 p-5 space-y-2 overflow-y-auto">
+            {menuItems.map((item) => {
+              const Icon = item.icon;
+              const active = isActiveMenu(item.href);
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setIsOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-4 rounded-2xl font-black transition ${
+                    active
+                      ? "bg-blue-600 text-white shadow-lg shadow-blue-600/25"
+                      : "text-slate-300 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  <Icon size={22} />
+
+                  <span>{item.title}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          <div className="p-5 border-t border-white/10">
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <div className="bg-white/10 rounded-2xl p-3 text-center">
+                <Package size={20} className="mx-auto text-blue-300 mb-1" />
+                <p className="text-[10px] text-slate-400 font-bold">Stok</p>
+              </div>
+
+              <div className="bg-white/10 rounded-2xl p-3 text-center">
+                <Wallet size={20} className="mx-auto text-emerald-300 mb-1" />
+                <p className="text-[10px] text-slate-400 font-bold">Finans</p>
+              </div>
+
+              <div className="bg-white/10 rounded-2xl p-3 text-center">
+                <Bell size={20} className="mx-auto text-red-300 mb-1" />
+                <p className="text-[10px] text-slate-400 font-bold">Uyarı</p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleLogout}
+              className="w-full bg-red-600 hover:bg-red-700 text-white rounded-2xl py-4 font-black transition flex items-center justify-center gap-2"
+            >
+              <LogOut size={21} />
+              Çıkış Yap
+            </button>
+          </div>
+        </div>
+      </aside>
+    </>
   );
 }

@@ -1,24 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { ElementType } from "react";
+import { useRouter } from "next/navigation";
 import api from "@/app/services/api";
 import connection from "@/app/services/signalr";
 import toast, { Toaster } from "react-hot-toast";
-import { useRouter } from "next/navigation";
 
 import {
-  Search,
-  Filter,
-  Wrench,
+  Activity,
   AlertTriangle,
   CheckCircle2,
-  Timer,
+  Edit,
+  Gauge,
   Package,
-  PlusCircle,
-  RotateCcw,
-  Pencil,
+  Play,
+  Plus,
+  RefreshCcw,
+  Save,
+  Search,
+  Square,
   Trash2,
-  LayoutDashboard,
+  Wrench,
+  X,
 } from "lucide-react";
 
 type Tool = {
@@ -29,6 +33,10 @@ type Tool = {
   remainingLifeMinute: number;
   stock: number;
   criticalStock: number;
+  isRunning: boolean;
+  startedAt?: string | null;
+  incomePerMinute: number;
+  purchasePrice: number;
 };
 
 type User = {
@@ -38,48 +46,129 @@ type User = {
   role: string;
 };
 
-type ToolUsageAddedEvent = {
+type ToolForm = {
+  toolName: string;
+  toolType: string;
+  totalLifeMinute: string;
+  remainingLifeMinute: string;
+  stock: string;
+  criticalStock: string;
+  incomePerMinute: string;
+  purchasePrice: string;
+};
+
+type ToolLifeTickEvent = {
   toolId: number;
   toolName: string;
   toolType: string;
-  usedMinute: number;
   remainingLifeMinute: number;
   totalLifeMinute: number;
   stock: number;
   criticalStock: number;
-  usageDate: string;
+  isRunning: boolean;
+  incomePerMinute?: number;
+  purchasePrice?: number;
+};
+
+type ToolRunningChangedEvent = {
+  toolId: number;
+  toolName: string;
+  toolType?: string;
+  isRunning: boolean;
+  startedAt?: string | null;
+  remainingLifeMinute: number;
+  incomePerMinute?: number;
+  purchasePrice?: number;
+};
+
+const emptyForm: ToolForm = {
+  toolName: "",
+  toolType: "",
+  totalLifeMinute: "",
+  remainingLifeMinute: "",
+  stock: "",
+  criticalStock: "",
+  incomePerMinute: "",
+  purchasePrice: "",
 };
 
 export default function ToolsPage() {
   const router = useRouter();
 
   const [tools, setTools] = useState<Tool[]>([]);
-  const [searchText, setSearchText] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
   const [user, setUser] = useState<User | null>(null);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  const [form, setForm] = useState<ToolForm>(emptyForm);
+  const [editingTool, setEditingTool] = useState<Tool | null>(null);
+
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState("");
+
+  const isAdmin = user?.role === "Admin";
+
+  const checkAuth = () => {
+    const storedUser = localStorage.getItem("user");
+
+    if (!storedUser) {
+      router.push("/login");
+      return null;
+    }
+
+    const parsedUser = JSON.parse(storedUser);
+
+    const token =
+      parsedUser.token ||
+      parsedUser.Token ||
+      parsedUser.accessToken ||
+      parsedUser.AccessToken;
+
+    if (!token) {
+      localStorage.removeItem("user");
+      router.push("/login");
+      return null;
+    }
+
+    setUser(parsedUser);
+    return parsedUser;
+  };
 
   const fetchTools = async () => {
     try {
+      const authUser = checkAuth();
+
+      if (!authUser) {
+        return;
+      }
+
       const response = await api.get("/Tool");
+
       setTools(response.data);
-    } catch (error) {
+      setLastUpdate(new Date().toLocaleTimeString("tr-TR"));
+    } catch (error: any) {
       console.error(error);
-      toast.error("Takımlar yüklenirken hata oluştu!");
+
+      if (error.response?.status === 401) {
+        localStorage.removeItem("user");
+        toast.error("Oturum süresi doldu. Tekrar giriş yapınız.");
+
+        setTimeout(() => {
+          router.push("/login");
+        }, 800);
+
+        return;
+      }
+
+      toast.error("Takımlar yüklenemedi.");
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-
     fetchTools();
   }, []);
 
@@ -97,92 +186,337 @@ export default function ToolsPage() {
 
     startSignalR();
 
-    connection.on("ToolUsageAdded", (data: ToolUsageAddedEvent) => {
+    connection.on("ToolLifeTick", (eventData: ToolLifeTickEvent) => {
       setTools((prevTools) =>
         prevTools.map((tool) =>
-          tool.id === data.toolId
+          tool.id === eventData.toolId
             ? {
                 ...tool,
-                remainingLifeMinute: data.remainingLifeMinute,
-                stock: data.stock,
-                criticalStock: data.criticalStock,
-                totalLifeMinute: data.totalLifeMinute,
+                toolName: eventData.toolName,
+                toolType: eventData.toolType,
+                remainingLifeMinute: eventData.remainingLifeMinute,
+                totalLifeMinute: eventData.totalLifeMinute,
+                stock: eventData.stock,
+                criticalStock: eventData.criticalStock,
+                isRunning: eventData.isRunning,
+                incomePerMinute:
+                  eventData.incomePerMinute ?? tool.incomePerMinute,
+                purchasePrice: eventData.purchasePrice ?? tool.purchasePrice,
               }
             : tool
         )
       );
 
-      toast.success(
-        `${data.toolName} için ${data.usedMinute} dk kullanım eklendi.`
+      setLastUpdate(new Date().toLocaleTimeString("tr-TR"));
+    });
+
+    connection.on("ToolRunningChanged", (eventData: ToolRunningChangedEvent) => {
+      setTools((prevTools) =>
+        prevTools.map((tool) =>
+          tool.id === eventData.toolId
+            ? {
+                ...tool,
+                toolName: eventData.toolName ?? tool.toolName,
+                toolType: eventData.toolType ?? tool.toolType,
+                isRunning: eventData.isRunning,
+                startedAt: eventData.startedAt ?? null,
+                remainingLifeMinute: eventData.remainingLifeMinute,
+                incomePerMinute:
+                  eventData.incomePerMinute ?? tool.incomePerMinute,
+                purchasePrice: eventData.purchasePrice ?? tool.purchasePrice,
+              }
+            : tool
+        )
       );
+
+      setLastUpdate(new Date().toLocaleTimeString("tr-TR"));
+    });
+
+    connection.on("ToolCreated", () => {
+      fetchTools();
+    });
+
+    connection.on("ToolUpdated", () => {
+      fetchTools();
+    });
+
+    connection.on("ToolDeleted", () => {
+      fetchTools();
+    });
+
+    connection.on("MaintenancePlanUpdated", () => {
+      fetchTools();
     });
 
     return () => {
-      connection.off("ToolUsageAdded");
+      connection.off("ToolLifeTick");
+      connection.off("ToolRunningChanged");
+      connection.off("ToolCreated");
+      connection.off("ToolUpdated");
+      connection.off("ToolDeleted");
+      connection.off("MaintenancePlanUpdated");
     };
   }, []);
 
-  const confirmDelete = async () => {
-    if (deleteId === null) return;
+  const filteredTools = useMemo(() => {
+    let result = tools;
+
+    if (searchText.trim()) {
+      const search = searchText.toLowerCase();
+
+      result = result.filter(
+        (tool) =>
+          tool.toolName.toLowerCase().includes(search) ||
+          tool.toolType.toLowerCase().includes(search)
+      );
+    }
+
+    if (statusFilter === "running") {
+      result = result.filter((tool) => tool.isRunning);
+    }
+
+    if (statusFilter === "stopped") {
+      result = result.filter((tool) => !tool.isRunning);
+    }
+
+    if (statusFilter === "criticalStock") {
+      result = result.filter((tool) => tool.stock <= tool.criticalStock);
+    }
+
+    if (statusFilter === "lowLife") {
+      result = result.filter((tool) => tool.remainingLifeMinute < 200);
+    }
+
+    return result;
+  }, [tools, searchText, statusFilter]);
+
+  const runningTools = tools.filter((tool) => tool.isRunning);
+
+  const criticalStockTools = tools.filter(
+    (tool) => tool.stock <= tool.criticalStock
+  );
+
+  const lowLifeTools = tools.filter((tool) => tool.remainingLifeMinute < 200);
+
+  const getLifePercent = (tool: Tool) => {
+    if (tool.totalLifeMinute <= 0) {
+      return 0;
+    }
+
+    return Math.min(
+      Math.max(
+        Math.round((tool.remainingLifeMinute / tool.totalLifeMinute) * 100),
+        0
+      ),
+      100
+    );
+  };
+
+  const getLifeColor = (percent: number) => {
+    if (percent < 20) {
+      return "bg-red-500";
+    }
+
+    if (percent < 50) {
+      return "bg-yellow-500";
+    }
+
+    return "bg-emerald-500";
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("tr-TR", {
+      style: "currency",
+      currency: "TRY",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value || 0);
+  };
+
+  const resetForm = () => {
+    setForm(emptyForm);
+    setEditingTool(null);
+  };
+
+  const fillFormForEdit = (tool: Tool) => {
+    setEditingTool(tool);
+
+    setForm({
+      toolName: tool.toolName,
+      toolType: tool.toolType,
+      totalLifeMinute: String(tool.totalLifeMinute),
+      remainingLifeMinute: String(tool.remainingLifeMinute),
+      stock: String(tool.stock),
+      criticalStock: String(tool.criticalStock),
+      incomePerMinute: String(tool.incomePerMinute),
+      purchasePrice: String(tool.purchasePrice),
+    });
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  const validateForm = () => {
+    if (!form.toolName.trim()) {
+      toast.error("Takım adı boş olamaz.");
+      return false;
+    }
+
+    if (!form.toolType.trim()) {
+      toast.error("Takım tipi boş olamaz.");
+      return false;
+    }
+
+    if (Number(form.totalLifeMinute) <= 0) {
+      toast.error("Toplam ömür 0'dan büyük olmalıdır.");
+      return false;
+    }
+
+    if (Number(form.remainingLifeMinute) < 0) {
+      toast.error("Kalan ömür negatif olamaz.");
+      return false;
+    }
+
+    if (Number(form.remainingLifeMinute) > Number(form.totalLifeMinute)) {
+      toast.error("Kalan ömür toplam ömürden büyük olamaz.");
+      return false;
+    }
+
+    if (Number(form.stock) < 0) {
+      toast.error("Stok negatif olamaz.");
+      return false;
+    }
+
+    if (Number(form.criticalStock) < 0) {
+      toast.error("Kritik stok negatif olamaz.");
+      return false;
+    }
+
+    if (Number(form.incomePerMinute) < 0) {
+      toast.error("Dakika geliri negatif olamaz.");
+      return false;
+    }
+
+    if (Number(form.purchasePrice) < 0) {
+      toast.error("Alış fiyatı negatif olamaz.");
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleSaveTool = async () => {
+    if (!isAdmin) {
+      toast.error("Bu işlem için Admin yetkisi gereklidir.");
+      return;
+    }
+
+    if (!validateForm()) {
+      return;
+    }
+
+    const payload = {
+      toolName: form.toolName.trim(),
+      toolType: form.toolType.trim(),
+      totalLifeMinute: Number(form.totalLifeMinute),
+      remainingLifeMinute: Number(form.remainingLifeMinute),
+      stock: Number(form.stock),
+      criticalStock: Number(form.criticalStock),
+      incomePerMinute: Number(form.incomePerMinute),
+      purchasePrice: Number(form.purchasePrice),
+    };
 
     try {
-      await api.delete(`/Tool/${deleteId}`);
+      setIsSaving(true);
 
-      setTools((prevTools) =>
-        prevTools.filter((tool) => tool.id !== deleteId)
-      );
+      if (editingTool) {
+        await api.put(`/Tool/${editingTool.id}`, payload);
+        toast.success("Takım güncellendi.");
+      } else {
+        await api.post("/Tool", payload);
+        toast.success("Takım eklendi.");
+      }
 
-      setDeleteId(null);
-
-      toast.success("Takım başarıyla silindi!");
-    } catch (error) {
+      resetForm();
+      fetchTools();
+    } catch (error: any) {
       console.error(error);
-      toast.error("Silme işlemi başarısız!");
+
+      const message =
+        error.response?.data?.message ||
+        error.response?.data ||
+        "Takım kaydedilemedi.";
+
+      toast.error(String(message));
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const toolTypes = Array.from(
-    new Set(tools.map((tool) => tool.toolType))
-  );
+  const handleDeleteTool = async (tool: Tool) => {
+    if (!isAdmin) {
+      toast.error("Bu işlem için Admin yetkisi gereklidir.");
+      return;
+    }
 
-  const isAdmin = user?.role?.toLowerCase() === "admin";
+    const confirmed = confirm(`${tool.toolName} silinsin mi?`);
 
-  const criticalStockCount = tools.filter(
-    (tool) => tool.stock <= tool.criticalStock
-  ).length;
+    if (!confirmed) {
+      return;
+    }
 
-  const lowLifeCount = tools.filter(
-    (tool) => tool.remainingLifeMinute < 200
-  ).length;
+    try {
+      await api.delete(`/Tool/${tool.id}`);
+      toast.success("Takım silindi.");
+      fetchTools();
+    } catch (error: any) {
+      console.error(error);
 
-  const normalStockCount = tools.filter(
-    (tool) => tool.stock > tool.criticalStock
-  ).length;
+      const message =
+        error.response?.data?.message ||
+        error.response?.data ||
+        "Takım silinemedi.";
 
-  const filteredTools = tools.filter((tool) => {
-    const matchesSearch =
-      tool.toolName.toLowerCase().includes(searchText.toLowerCase()) ||
-      tool.toolType.toLowerCase().includes(searchText.toLowerCase());
+      toast.error(String(message));
+    }
+  };
 
-    const matchesType =
-      typeFilter === "" || tool.toolType === typeFilter;
+  const handleStartTool = async (tool: Tool) => {
+    try {
+      await api.put(`/Tool/${tool.id}/start`);
 
-    const isCriticalStock = tool.stock <= tool.criticalStock;
-    const isLowLife = tool.remainingLifeMinute < 200;
+      toast.success(`${tool.toolName} çalıştırıldı.`);
+      fetchTools();
+    } catch (error: any) {
+      console.error(error);
 
-    const matchesStatus =
-      statusFilter === "" ||
-      (statusFilter === "critical-stock" && isCriticalStock) ||
-      (statusFilter === "low-life" && isLowLife) ||
-      (statusFilter === "normal" && !isCriticalStock && !isLowLife);
+      const message =
+        error.response?.data?.message ||
+        error.response?.data ||
+        "Takım çalıştırılamadı.";
 
-    return matchesSearch && matchesType && matchesStatus;
-  });
+      toast.error(String(message));
+    }
+  };
 
-  const clearFilters = () => {
-    setSearchText("");
-    setTypeFilter("");
-    setStatusFilter("");
+  const handleStopTool = async (tool: Tool) => {
+    try {
+      await api.put(`/Tool/${tool.id}/stop`);
+
+      toast.success(`${tool.toolName} durduruldu.`);
+      fetchTools();
+    } catch (error: any) {
+      console.error(error);
+
+      const message =
+        error.response?.data?.message ||
+        error.response?.data ||
+        "Takım durdurulamadı.";
+
+      toast.error(String(message));
+    }
   };
 
   if (isLoading) {
@@ -191,13 +525,13 @@ export default function ToolsPage() {
         <Toaster position="top-right" />
 
         <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-          <div className="bg-white px-10 py-8 rounded-3xl shadow text-center">
-            <h1 className="text-2xl font-black text-slate-900 mb-2">
+          <div className="bg-white px-8 py-7 rounded-3xl shadow-sm border border-slate-200 text-center">
+            <h1 className="text-xl font-black text-slate-900">
               Takımlar yükleniyor...
             </h1>
 
-            <p className="text-slate-600 font-medium">
-              CNC takım verileri hazırlanıyor.
+            <p className="text-slate-500 font-semibold mt-2">
+              Sistem verileri hazırlanıyor.
             </p>
           </div>
         </div>
@@ -209,504 +543,533 @@ export default function ToolsPage() {
     <>
       <Toaster position="top-right" />
 
-      <div className="min-h-screen bg-slate-100 p-10">
-        <div className="mb-8">
-          <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 rounded-3xl p-10 shadow-lg text-white relative overflow-hidden">
-            <div className="absolute -right-24 -top-24 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl" />
-            <div className="absolute right-40 bottom-0 w-52 h-52 bg-cyan-500/10 rounded-full blur-3xl" />
+      <div className="min-h-screen bg-slate-100 p-6">
+        <div className="bg-slate-950 rounded-3xl p-7 text-white shadow-sm mb-6 overflow-hidden relative">
+          <div className="absolute -right-16 -top-16 w-64 h-64 bg-blue-600/20 blur-3xl rounded-full" />
+          <div className="absolute right-44 bottom-0 w-56 h-56 bg-emerald-500/10 blur-3xl rounded-full" />
 
-            <div className="relative z-10 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-8">
-              <div>
-                <p className="text-blue-300 font-semibold mb-3">
-                  CNC Takım Yönetimi
-                </p>
+          <div className="relative z-10 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
+            <div>
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="bg-blue-500/15 border border-blue-400/20 text-blue-200 px-3 py-1.5 rounded-full text-xs font-black">
+                  Takım Yönetimi
+                </span>
 
-                <h1 className="text-5xl font-black tracking-tight mb-4">
-                  Takım Envanteri
-                </h1>
+                <span className="bg-white/10 border border-white/10 text-slate-300 px-3 py-1.5 rounded-full text-xs font-bold">
+                  Rol: {user?.role || "-"}
+                </span>
 
-                <p className="text-slate-300 text-lg max-w-3xl leading-8">
-                  Sistemde kayıtlı CNC takımlarını, stok durumlarını ve kullanım
-                  ömürlerini detaylı şekilde takip edin.
-                </p>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-4">
-                <button
-                  type="button"
-                  onClick={() => router.push("/")}
-                  className="bg-white/10 hover:bg-white/20 border border-white/10 text-white px-6 py-4 rounded-2xl font-bold transition flex items-center justify-center gap-3"
-                >
-                  <LayoutDashboard size={21} />
-                  Dashboard
-                </button>
-
-                {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => router.push("/tools/create")}
-                    className="bg-green-500 hover:bg-green-600 text-white px-6 py-4 rounded-2xl font-bold transition flex items-center justify-center gap-3"
-                  >
-                    <PlusCircle size={21} />
-                    Yeni Takım Ekle
-                  </button>
+                {!isAdmin && (
+                  <span className="bg-yellow-500/15 border border-yellow-400/20 text-yellow-200 px-3 py-1.5 rounded-full text-xs font-black">
+                    Operator sadece başlat/durdur yapabilir
+                  </span>
                 )}
               </div>
+
+              <h1 className="text-3xl xl:text-4xl font-black tracking-tight">
+                Takımlar
+              </h1>
+
+              <p className="text-slate-400 font-medium mt-2 max-w-3xl">
+                CNC takımlarını ekleyebilir, güncelleyebilir, stok/ömür
+                durumlarını izleyebilir ve çalıştırma-durdurma işlemlerini
+                yapabilirsiniz.
+              </p>
             </div>
 
-            <div className="relative z-10 mt-8 border-t border-white/10 pt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <p className="text-slate-300 font-medium">
-                Liste üzerinde arama, filtreleme, stok ve ömür analizi
-                yapılabilir.
-              </p>
+            <div className="grid grid-cols-2 gap-3 min-w-[330px]">
+              <div className="bg-white/10 border border-white/10 rounded-2xl p-4">
+                <p className="text-xs text-slate-400 font-bold">
+                  Son Güncelleme
+                </p>
 
-              <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 text-green-300 px-5 py-3 rounded-2xl font-black">
-                <span className="w-3 h-3 bg-green-400 rounded-full shadow-lg shadow-green-500/50" />
-                Canlı güncelleme aktif
+                <p className="text-xl font-black mt-1">
+                  {lastUpdate || "Henüz yok"}
+                </p>
               </div>
-            </div>
-          </div>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-3xl p-7 shadow-sm border border-slate-200 hover:shadow-md transition">
-            <div className="flex items-center justify-between mb-5">
-              <p className="text-slate-600 font-bold">
-                Toplam Takım
-              </p>
-
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-700">
-                <Wrench size={24} />
-              </div>
-            </div>
-
-            <h2 className="text-5xl font-black text-slate-900">
-              {tools.length}
-            </h2>
-
-            <p className="text-slate-600 mt-4 font-medium">
-              Sistemde kayıtlı toplam takım sayısı.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-3xl p-7 shadow-sm border border-green-200 hover:shadow-md transition">
-            <div className="flex items-center justify-between mb-5">
-              <p className="text-green-700 font-bold">
-                Normal Stok
-              </p>
-
-              <div className="w-12 h-12 rounded-2xl bg-green-50 flex items-center justify-center text-green-700">
-                <CheckCircle2 size={24} />
-              </div>
-            </div>
-
-            <h2 className="text-5xl font-black text-green-700">
-              {normalStockCount}
-            </h2>
-
-            <p className="text-slate-600 mt-4 font-medium">
-              Stok seviyesi güvenli olan takımlar.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-3xl p-7 shadow-sm border border-red-200 hover:shadow-md transition">
-            <div className="flex items-center justify-between mb-5">
-              <p className="text-red-600 font-bold">
-                Kritik Stok
-              </p>
-
-              <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center text-red-600">
-                <AlertTriangle size={24} />
-              </div>
-            </div>
-
-            <h2 className="text-5xl font-black text-red-600">
-              {criticalStockCount}
-            </h2>
-
-            <p className="text-slate-600 mt-4 font-medium">
-              Kritik stok seviyesine düşen takımlar.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-3xl p-7 shadow-sm border border-yellow-200 hover:shadow-md transition">
-            <div className="flex items-center justify-between mb-5">
-              <p className="text-yellow-700 font-bold">
-                Kritik Ömür
-              </p>
-
-              <div className="w-12 h-12 rounded-2xl bg-yellow-50 flex items-center justify-center text-yellow-700">
-                <Timer size={24} />
-              </div>
-            </div>
-
-            <h2 className="text-5xl font-black text-yellow-700">
-              {lowLifeCount}
-            </h2>
-
-            <p className="text-slate-600 mt-4 font-medium">
-              Kalan ömrü 200 dakikanın altında olanlar.
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 mb-8">
-          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5 mb-6">
-            <div>
-              <h2 className="text-2xl font-black text-slate-900">
-                Arama ve Filtreleme
-              </h2>
-
-              <p className="text-slate-600 mt-1 font-medium">
-                Takımları ada, tipe veya durum bilgisine göre filtreleyin.
-              </p>
-            </div>
-
-            <div className="bg-slate-100 text-slate-700 px-5 py-3 rounded-2xl font-black">
-              {filteredTools.length} kayıt listeleniyor
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-            <div className="relative">
-              <Search
-                size={22}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-
-              <input
-                type="text"
-                placeholder="Takım adı veya tip ara..."
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                className="w-full border border-slate-300 bg-white text-slate-900 placeholder:text-slate-500 p-4 pl-12 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold"
-              />
-            </div>
-
-            <div className="relative">
-              <Filter
-                size={22}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="w-full border border-slate-300 bg-white text-slate-900 p-4 pl-12 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold"
+              <button
+                onClick={fetchTools}
+                className="bg-blue-600 hover:bg-blue-700 rounded-2xl p-4 text-left transition"
               >
-                <option value="">Tüm Takım Tipleri</option>
+                <RefreshCcw size={20} className="mb-2" />
 
-                {toolTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
+                <p className="text-sm font-black">Yenile</p>
+              </button>
             </div>
-
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full border border-slate-300 bg-white text-slate-900 p-4 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold"
-            >
-              <option value="">Tüm Durumlar</option>
-              <option value="normal">Normal Durum</option>
-              <option value="critical-stock">Kritik Stok</option>
-              <option value="low-life">Kritik Ömür</option>
-            </select>
-
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="bg-slate-900 hover:bg-slate-700 text-white p-4 rounded-2xl font-bold transition flex items-center justify-center gap-3"
-            >
-              <RotateCcw size={21} />
-              Filtreleri Temizle
-            </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-6 border-b border-slate-200 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-black text-slate-900">
-                Kayıtlı Takımlar
-              </h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <SummaryCard
+            title="Toplam Takım"
+            value={tools.length}
+            icon={Wrench}
+            color="slate"
+          />
 
-              <p className="text-slate-600 mt-1 font-medium">
-                CNC takım envanteri ve anlık durum bilgileri.
-              </p>
+          <SummaryCard
+            title="Çalışan"
+            value={runningTools.length}
+            icon={Activity}
+            color="blue"
+          />
+
+          <SummaryCard
+            title="Kritik Stok"
+            value={criticalStockTools.length}
+            icon={AlertTriangle}
+            color="red"
+          />
+
+          <SummaryCard
+            title="Kritik Ömür"
+            value={lowLifeTools.length}
+            icon={Gauge}
+            color="yellow"
+          />
+        </div>
+
+        {isAdmin && (
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 mb-6">
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-5">
+              <div>
+                <h2 className="text-2xl font-black text-slate-900">
+                  {editingTool ? "Takımı Güncelle" : "Yeni Takım Ekle"}
+                </h2>
+
+                <p className="text-slate-500 font-semibold mt-1">
+                  Bu alan sadece Admin kullanıcısına görünür. Takım ömrü, stok,
+                  kritik stok ve finans değerlerini giriniz.
+                </p>
+              </div>
+
+              {editingTool && (
+                <button
+                  onClick={resetForm}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-3 rounded-2xl font-black flex items-center gap-2"
+                >
+                  <X size={18} />
+                  Düzenlemeyi İptal Et
+                </button>
+              )}
             </div>
 
-            <div className="bg-blue-50 text-blue-700 px-5 py-3 rounded-2xl font-black flex items-center gap-3">
-              <Package size={21} />
-              {filteredTools.length} takım
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              <InputBox
+                label="Takım Adı"
+                value={form.toolName}
+                onChange={(value) => setForm({ ...form, toolName: value })}
+                placeholder="Örn: Freze Ucu"
+              />
+
+              <InputBox
+                label="Takım Tipi"
+                value={form.toolType}
+                onChange={(value) => setForm({ ...form, toolType: value })}
+                placeholder="Örn: Kesici Takım"
+              />
+
+              <InputBox
+                label="Toplam Ömür"
+                value={form.totalLifeMinute}
+                onChange={(value) =>
+                  setForm({ ...form, totalLifeMinute: value })
+                }
+                placeholder="Örn: 1000"
+                type="number"
+              />
+
+              <InputBox
+                label="Kalan Ömür"
+                value={form.remainingLifeMinute}
+                onChange={(value) =>
+                  setForm({ ...form, remainingLifeMinute: value })
+                }
+                placeholder="Örn: 1000"
+                type="number"
+              />
+
+              <InputBox
+                label="Stok"
+                value={form.stock}
+                onChange={(value) => setForm({ ...form, stock: value })}
+                placeholder="Örn: 10"
+                type="number"
+              />
+
+              <InputBox
+                label="Kritik Stok"
+                value={form.criticalStock}
+                onChange={(value) =>
+                  setForm({ ...form, criticalStock: value })
+                }
+                placeholder="Örn: 3"
+                type="number"
+              />
+
+              <InputBox
+                label="Dakika Geliri"
+                value={form.incomePerMinute}
+                onChange={(value) =>
+                  setForm({ ...form, incomePerMinute: value })
+                }
+                placeholder="Örn: 25"
+                type="number"
+              />
+
+              <InputBox
+                label="Alış Fiyatı"
+                value={form.purchasePrice}
+                onChange={(value) =>
+                  setForm({ ...form, purchasePrice: value })
+                }
+                placeholder="Örn: 500"
+                type="number"
+              />
+            </div>
+
+            <div className="flex justify-end mt-5">
+              <button
+                onClick={handleSaveTool}
+                disabled={isSaving}
+                className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white px-6 py-4 rounded-2xl font-black flex items-center gap-2"
+              >
+                {editingTool ? <Save size={20} /> : <Plus size={20} />}
+                {isSaving
+                  ? "Kaydediliyor..."
+                  : editingTool
+                  ? "Takımı Güncelle"
+                  : "Takım Ekle"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-slate-200 bg-slate-50">
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-black text-slate-900">
+                  Takım Listesi
+                </h2>
+
+                <p className="text-slate-500 font-semibold mt-1">
+                  Başlat/durdur işlemleri bu tabloda yapılır.
+                </p>
+              </div>
+
+              <div className="flex flex-col md:flex-row gap-3">
+                <div className="relative">
+                  <Search
+                    size={18}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+
+                  <input
+                    value={searchText}
+                    onChange={(event) => setSearchText(event.target.value)}
+                    placeholder="Takım ara..."
+                    className="w-full md:w-72 bg-white border border-slate-200 rounded-2xl pl-11 pr-4 py-3 outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500 font-bold"
+                  />
+                </div>
+
+                <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                  className="bg-white border border-slate-200 rounded-2xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500 font-bold text-slate-700"
+                >
+                  <option value="all">Tüm Takımlar</option>
+                  <option value="running">Çalışanlar</option>
+                  <option value="stopped">Duranlar</option>
+                  <option value="criticalStock">Kritik Stok</option>
+                  <option value="lowLife">Kritik Ömür</option>
+                </select>
+              </div>
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1250px]">
+            <table className="w-full min-w-[1200px]">
               <thead className="bg-slate-950 text-white">
                 <tr>
-                  <th className="px-4 py-4 text-left text-xs uppercase tracking-wide">
-                    ID
-                  </th>
-                  <th className="px-4 py-4 text-left text-xs uppercase tracking-wide">
-                    Takım Bilgisi
-                  </th>
-                  <th className="px-4 py-4 text-left text-xs uppercase tracking-wide">
-                    Tip
-                  </th>
-                  <th className="px-4 py-4 text-left text-xs uppercase tracking-wide">
-                    Kullanım Ömrü
-                  </th>
-                  <th className="px-4 py-4 text-left text-xs uppercase tracking-wide">
-                    Stok
-                  </th>
-                  <th className="px-4 py-4 text-left text-xs uppercase tracking-wide">
-                    Durum
-                  </th>
-                  {isAdmin && (
-                    <th className="px-4 py-4 text-left text-xs uppercase tracking-wide">
-                      İşlemler
-                    </th>
-                  )}
+                  <TableTh>ID</TableTh>
+                  <TableTh>Takım</TableTh>
+                  <TableTh>Tip</TableTh>
+                  <TableTh>Durum</TableTh>
+                  <TableTh>Kalan Ömür</TableTh>
+                  <TableTh>Ömür Oranı</TableTh>
+                  <TableTh>Stok</TableTh>
+                  <TableTh>Kritik</TableTh>
+                  <TableTh>Gelir / dk</TableTh>
+                  <TableTh>Alış</TableTh>
+                  <TableTh align="right">İşlem</TableTh>
                 </tr>
               </thead>
 
               <tbody>
                 {filteredTools.map((tool) => {
-                  const lifePercent =
-                    tool.totalLifeMinute > 0
-                      ? Math.round(
-                          (tool.remainingLifeMinute /
-                            tool.totalLifeMinute) *
-                            100
-                        )
-                      : 0;
-
-                  const safeLifePercent = Math.min(
-                    Math.max(lifePercent, 0),
-                    100
-                  );
-
-                  const isCriticalStock =
-                    tool.stock <= tool.criticalStock;
-
-                  const isLowLife =
-                    tool.remainingLifeMinute < 200;
+                  const lifePercent = getLifePercent(tool);
 
                   return (
                     <tr
                       key={tool.id}
-                      className="border-b border-slate-100 hover:bg-slate-50 transition"
+                      className="border-b border-slate-100 hover:bg-slate-50"
                     >
-                      <td className="px-4 py-4 font-black text-slate-500 text-sm">
+                      <td className="px-4 py-4 font-black text-slate-500">
                         #{tool.id}
                       </td>
 
                       <td className="px-4 py-4">
-                        <div>
-                          <p className="font-black text-slate-900 text-base leading-snug max-w-[150px]">
-                            {tool.toolName}
-                          </p>
-
-                          <p className="text-slate-600 text-xs mt-1 font-medium">
-                            Toplam ömür: {tool.totalLifeMinute} dk
-                          </p>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-4">
-                        <span className="bg-blue-50 text-blue-700 border border-blue-100 px-3 py-2 rounded-xl font-black text-xs inline-block max-w-[110px] text-center leading-snug">
-                          {tool.toolType}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-4 min-w-[260px]">
-                        <div className="flex justify-between text-sm mb-2">
-                          <span className="font-black text-slate-800 text-sm">
-                            {tool.remainingLifeMinute} dk kaldı
-                          </span>
-
-                          <span
-                            className={`font-black text-sm ${
-                              isLowLife
-                                ? "text-red-600"
-                                : safeLifePercent < 50
-                                ? "text-yellow-700"
-                                : "text-green-700"
-                            }`}
-                          >
-                            %{safeLifePercent}
-                          </span>
-                        </div>
-
-                        <div className="w-full bg-slate-200 rounded-full h-3">
-                          <div
-                            className={`h-3 rounded-full ${
-                              isLowLife
-                                ? "bg-red-500"
-                                : safeLifePercent < 50
-                                ? "bg-yellow-500"
-                                : "bg-green-500"
-                            }`}
-                            style={{ width: `${safeLifePercent}%` }}
-                          />
-                        </div>
-
-                        <p className="text-slate-500 text-xs mt-2 font-semibold">
-                          Kullanılan:{" "}
-                          {tool.totalLifeMinute - tool.remainingLifeMinute} dk
+                        <p className="font-black text-slate-900">
+                          {tool.toolName}
                         </p>
-                      </td>
 
-                      <td className="px-4 py-4">
-                        <div
-                          className={`rounded-2xl px-4 py-3 w-[92px] border ${
-                            isCriticalStock
-                              ? "bg-red-50 border-red-100"
-                              : "bg-green-50 border-green-100"
-                          }`}
-                        >
-                          <p
-                            className={`text-2xl font-black ${
-                              isCriticalStock
-                                ? "text-red-600"
-                                : "text-green-700"
-                            }`}
-                          >
-                            {tool.stock}
-                          </p>
-
-                          <p className="text-slate-600 text-xs font-bold">
-                            Kritik: {tool.criticalStock}
-                          </p>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-4">
-                        <div className="flex flex-col gap-2">
-                          {isCriticalStock ? (
-                            <span className="bg-red-100 text-red-700 px-3 py-2 rounded-xl font-black text-xs w-fit flex items-center gap-2">
-                              <AlertTriangle size={14} />
-                              Kritik Stok
-                            </span>
-                          ) : (
-                            <span className="bg-green-100 text-green-700 px-3 py-2 rounded-xl font-black text-xs w-fit flex items-center gap-2">
-                              <CheckCircle2 size={14} />
-                              Stok Normal
-                            </span>
-                          )}
-
-                          {isLowLife ? (
-                            <span className="bg-yellow-100 text-yellow-700 px-3 py-2 rounded-xl font-black text-xs w-fit flex items-center gap-2">
-                              <Timer size={14} />
-                              Kritik Ömür
-                            </span>
-                          ) : (
-                            <span className="bg-slate-100 text-slate-700 px-3 py-2 rounded-xl font-black text-xs w-fit">
-                              Ömür Normal
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {isAdmin && (
-                        <td className="px-4 py-4 min-w-[220px]">
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                router.push(`/tools/edit/${tool.id}`)
+                        {tool.startedAt && tool.isRunning && (
+                          <p className="text-xs text-emerald-600 font-bold mt-1">
+                            Başlangıç:{" "}
+                            {new Date(tool.startedAt).toLocaleTimeString(
+                              "tr-TR",
+                              {
+                                hour: "2-digit",
+                                minute: "2-digit",
                               }
-                              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl font-black text-sm transition flex items-center gap-2"
-                            >
-                              <Pencil size={15} />
-                              Düzenle
-                            </button>
+                            )}
+                          </p>
+                        )}
+                      </td>
 
-                            <button
-                              type="button"
-                              onClick={() => setDeleteId(tool.id)}
-                              className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-xl font-black text-sm transition flex items-center gap-2"
-                            >
-                              <Trash2 size={15} />
-                              Sil
-                            </button>
+                      <td className="px-4 py-4 font-semibold text-slate-600">
+                        {tool.toolType}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {tool.isRunning ? (
+                          <span className="bg-emerald-100 text-emerald-700 px-3 py-2 rounded-xl text-xs font-black inline-flex items-center gap-1">
+                            <CheckCircle2 size={14} />
+                            Çalışıyor
+                          </span>
+                        ) : (
+                          <span className="bg-slate-100 text-slate-600 px-3 py-2 rounded-xl text-xs font-black">
+                            Duruyor
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-4 font-black text-slate-900">
+                        {tool.remainingLifeMinute} dk
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <div className="min-w-[150px]">
+                          <div className="flex justify-between mb-1">
+                            <span className="text-xs font-black text-slate-500">
+                              Ömür
+                            </span>
+
+                            <span className="text-xs font-black text-slate-900">
+                              %{lifePercent}
+                            </span>
                           </div>
-                        </td>
-                      )}
+
+                          <div className="w-full h-2.5 bg-slate-200 rounded-full">
+                            <div
+                              className={`h-2.5 rounded-full ${getLifeColor(
+                                lifePercent
+                              )}`}
+                              style={{ width: `${lifePercent}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+
+                      <td
+                        className={`px-4 py-4 font-black ${
+                          tool.stock <= tool.criticalStock
+                            ? "text-red-600"
+                            : "text-slate-900"
+                        }`}
+                      >
+                        {tool.stock}
+                      </td>
+
+                      <td className="px-4 py-4 font-semibold text-slate-600">
+                        {tool.criticalStock}
+                      </td>
+
+                      <td className="px-4 py-4 font-black text-emerald-700">
+                        {formatCurrency(tool.incomePerMinute)}
+                      </td>
+
+                      <td className="px-4 py-4 font-black text-slate-700">
+                        {formatCurrency(tool.purchasePrice)}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <div className="flex justify-end gap-2">
+                          {tool.isRunning ? (
+                            <button
+                              onClick={() => handleStopTool(tool)}
+                              className="bg-red-600 hover:bg-red-700 text-white p-3 rounded-2xl"
+                              title="Durdur"
+                            >
+                              <Square size={18} />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleStartTool(tool)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-2xl"
+                              title="Başlat"
+                            >
+                              <Play size={18} />
+                            </button>
+                          )}
+
+                          {isAdmin && (
+                            <>
+                              <button
+                                onClick={() => fillFormForEdit(tool)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-2xl"
+                                title="Düzenle"
+                              >
+                                <Edit size={18} />
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteTool(tool)}
+                                className="bg-slate-900 hover:bg-black text-white p-3 rounded-2xl"
+                                title="Sil"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
+
+                {filteredTools.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={11}
+                      className="px-4 py-10 text-center text-slate-500 font-black"
+                    >
+                      Takım bulunamadı.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
-
-          {filteredTools.length === 0 && (
-            <div className="p-12 text-center">
-              <div className="w-20 h-20 bg-slate-100 text-slate-500 rounded-3xl flex items-center justify-center mx-auto mb-5">
-                <Search size={36} />
-              </div>
-
-              <h3 className="text-2xl font-black text-slate-900 mb-2">
-                Kayıt bulunamadı
-              </h3>
-
-              <p className="text-slate-600 font-medium max-w-xl mx-auto">
-                Arama veya filtreleme kriterlerine uygun takım bulunamadı.
-                Filtreleri temizleyerek tekrar deneyebilirsiniz.
-              </p>
-
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="mt-6 bg-slate-900 hover:bg-slate-700 text-white px-6 py-4 rounded-2xl font-black transition"
-              >
-                Filtreleri Temizle
-              </button>
-            </div>
-          )}
         </div>
-
-        {deleteId !== null && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6">
-            <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full">
-              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-3xl flex items-center justify-center mb-5">
-                <Trash2 size={30} />
-              </div>
-
-              <h2 className="text-2xl font-black text-slate-900 mb-4">
-                Silme Onayı
-              </h2>
-
-              <p className="text-slate-700 mb-8 font-medium leading-7">
-                Bu takımı silmek istediğinize emin misiniz? Bu işlem geri
-                alınamaz.
-              </p>
-
-              <div className="flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setDeleteId(null)}
-                  className="bg-slate-200 hover:bg-slate-300 text-slate-900 px-5 py-3 rounded-xl font-black transition"
-                >
-                  Vazgeç
-                </button>
-
-                <button
-                  type="button"
-                  onClick={confirmDelete}
-                  className="bg-red-600 hover:bg-red-800 text-white px-5 py-3 rounded-xl font-black transition"
-                >
-                  Evet, Sil
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </>
+  );
+}
+
+function InputBox({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  type?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-black text-slate-700 mb-2">
+        {label}
+      </label>
+
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500 font-bold text-slate-800"
+      />
+    </div>
+  );
+}
+
+function SummaryCard({
+  title,
+  value,
+  icon: Icon,
+  color,
+}: {
+  title: string;
+  value: string | number;
+  icon: ElementType;
+  color: "slate" | "blue" | "red" | "yellow";
+}) {
+  const colors = {
+    slate: {
+      bg: "bg-slate-50",
+      border: "border-slate-200",
+      text: "text-slate-900",
+      icon: "text-slate-700",
+    },
+    blue: {
+      bg: "bg-blue-50",
+      border: "border-blue-200",
+      text: "text-blue-700",
+      icon: "text-blue-700",
+    },
+    red: {
+      bg: "bg-red-50",
+      border: "border-red-200",
+      text: "text-red-600",
+      icon: "text-red-600",
+    },
+    yellow: {
+      bg: "bg-yellow-50",
+      border: "border-yellow-200",
+      text: "text-yellow-700",
+      icon: "text-yellow-700",
+    },
+  };
+
+  const selected = colors[color];
+
+  return (
+    <div
+      className={`bg-white rounded-3xl p-5 border ${selected.border} shadow-sm`}
+    >
+      <div className="flex justify-between items-center mb-4">
+        <p className="text-slate-500 text-sm font-black">{title}</p>
+
+        <div
+          className={`w-10 h-10 rounded-2xl ${selected.bg} ${selected.icon} flex items-center justify-center`}
+        >
+          <Icon size={20} />
+        </div>
+      </div>
+
+      <h2 className={`text-3xl font-black ${selected.text}`}>{value}</h2>
+    </div>
+  );
+}
+
+function TableTh({
+  children,
+  align = "left",
+}: {
+  children: string;
+  align?: "left" | "right";
+}) {
+  return (
+    <th
+      className={`px-4 py-4 text-${align} text-xs uppercase tracking-wide whitespace-nowrap`}
+    >
+      {children}
+    </th>
   );
 }

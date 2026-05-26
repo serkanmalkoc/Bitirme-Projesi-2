@@ -1,31 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { ElementType, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import api from "./services/api";
 import connection from "@/app/services/signalr";
 import toast, { Toaster } from "react-hot-toast";
 
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  ArcElement,
-  Tooltip,
-  Legend,
-} from "chart.js";
-
-import { Bar, Doughnut } from "react-chartjs-2";
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  ArcElement,
-  Tooltip,
-  Legend
-);
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  CheckCircle2,
+  CircleDollarSign,
+  ClipboardCheck,
+  Clock3,
+  Gauge,
+  History,
+  Package,
+  RefreshCcw,
+  ShieldAlert,
+  ShoppingCart,
+  Table2,
+  Timer,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+  Wrench,
+} from "lucide-react";
 
 type DashboardData = {
   totalTools: number;
@@ -41,6 +43,10 @@ type Tool = {
   criticalStock: number;
   totalLifeMinute: number;
   remainingLifeMinute: number;
+  isRunning: boolean;
+  startedAt?: string | null;
+  incomePerMinute: number;
+  purchasePrice: number;
 };
 
 type UsageLog = {
@@ -58,108 +64,281 @@ type User = {
   role: string;
 };
 
-type ToolUsageAddedEvent = {
+type WalletInfo = {
+  id: number;
+  balance: number;
+  totalEarned: number;
+  totalSpent: number;
+  updatedAt: string;
+};
+
+type FinanceSummary = {
+  wallet: WalletInfo;
+  runningTools: {
+    id: number;
+    toolName: string;
+    toolType: string;
+    remainingLifeMinute: number;
+    incomePerMinute: number;
+    startedAt?: string | null;
+  }[];
+  criticalStockTools: {
+    id: number;
+    toolName: string;
+    toolType: string;
+    stock: number;
+    criticalStock: number;
+    neededQuantity: number;
+    purchasePrice: number;
+    totalNeededPrice: number;
+    incomePerMinute: number;
+    canPurchase: boolean;
+  }[];
+  purchaseLogs: {
+    id: number;
+    toolId: number;
+    toolName: string;
+    toolType: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+    purchaseDate: string;
+  }[];
+};
+
+type MaintenancePlan = {
+  id: number;
   toolId: number;
   toolName: string;
   toolType: string;
-  usedMinute: number;
   remainingLifeMinute: number;
   totalLifeMinute: number;
   stock: number;
   criticalStock: number;
-  usageDate: string;
+  isRunning: boolean;
+  title: string;
+  description: string;
+  plannedDate: string;
+  status: string;
+  createdAt: string;
+  completedAt?: string | null;
 };
+
+type MaintenanceRecommendation = {
+  id: number;
+  toolName: string;
+  toolType: string;
+  totalLifeMinute: number;
+  remainingLifeMinute: number;
+  stock: number;
+  criticalStock: number;
+  isRunning: boolean;
+  incomePerMinute: number;
+  purchasePrice: number;
+  lifePercent: number;
+  reason: string;
+  priority: string;
+  hasActivePlan: boolean;
+  suggestedDate: string;
+};
+
+type ToolLifeTickEvent = {
+  toolId: number;
+  toolName: string;
+  toolType: string;
+  remainingLifeMinute: number;
+  totalLifeMinute: number;
+  stock: number;
+  criticalStock: number;
+  isRunning: boolean;
+  incomePerMinute?: number;
+  purchasePrice?: number;
+};
+
+type ToolRunningChangedEvent = {
+  toolId: number;
+  toolName: string;
+  isRunning: boolean;
+  startedAt?: string | null;
+  remainingLifeMinute: number;
+  incomePerMinute?: number;
+  purchasePrice?: number;
+};
+
+type FinanceUpdatedEvent = {
+  balance: number;
+  totalEarned: number;
+  totalSpent: number;
+  earnedThisTick?: number;
+  updatedAt?: string;
+};
+
+type DashboardTab =
+  | "overview"
+  | "tools"
+  | "usage"
+  | "finance"
+  | "maintenance"
+  | "alerts";
+
+type CardColor =
+  | "slate"
+  | "blue"
+  | "red"
+  | "yellow"
+  | "emerald"
+  | "green"
+  | "purple";
 
 export default function HomePage() {
   const router = useRouter();
+
+  const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+
   const [data, setData] = useState<DashboardData>();
   const [tools, setTools] = useState<Tool[]>([]);
   const [logs, setLogs] = useState<UsageLog[]>([]);
+  const [financeSummary, setFinanceSummary] =
+    useState<FinanceSummary | null>(null);
+
+  const [maintenancePlans, setMaintenancePlans] = useState<MaintenancePlan[]>(
+    []
+  );
+
+  const [maintenanceRecommendations, setMaintenanceRecommendations] = useState<
+    MaintenanceRecommendation[]
+  >([]);
+
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [lastUpdate, setLastUpdate] = useState<string>("");
+  const [lastUpdate, setLastUpdate] = useState("");
 
-const fetchDashboardData = async () => {
-  try {
-    const storedUser = localStorage.getItem("user");
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("tr-TR", {
+      style: "currency",
+      currency: "TRY",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value || 0);
+  };
 
-    if (!storedUser) {
-      router.push("/login");
-      return;
+  const formatDateTime = (date: string) => {
+    return new Date(date).toLocaleString("tr-TR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleDateString("tr-TR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  };
+
+  const getLifePercent = (tool: Tool) => {
+    if (tool.totalLifeMinute <= 0) {
+      return 0;
     }
 
-    const parsedUser = JSON.parse(storedUser);
+    return Math.min(
+      Math.max(
+        Math.round((tool.remainingLifeMinute / tool.totalLifeMinute) * 100),
+        0
+      ),
+      100
+    );
+  };
 
-    const token =
-      parsedUser.token ||
-      parsedUser.Token ||
-      parsedUser.accessToken ||
-      parsedUser.AccessToken;
+  const getLifeStatus = (tool: Tool) => {
+    const percent = getLifePercent(tool);
 
-    if (!token) {
-      localStorage.removeItem("user");
-      router.push("/login");
-      return;
+    if (percent < 20) {
+      return "Kritik";
     }
 
-    const [dashboardResponse, toolsResponse, logsResponse] =
-      await Promise.all([
+    if (percent < 50) {
+      return "Dikkat";
+    }
+
+    return "İyi";
+  };
+
+  const fetchDashboardData = async () => {
+    try {
+      const storedUser = localStorage.getItem("user");
+
+      if (!storedUser) {
+        router.push("/login");
+        return;
+      }
+
+      const parsedUser = JSON.parse(storedUser);
+
+      const token =
+        parsedUser.token ||
+        parsedUser.Token ||
+        parsedUser.accessToken ||
+        parsedUser.AccessToken;
+
+      if (!token) {
+        localStorage.removeItem("user");
+        router.push("/login");
+        return;
+      }
+
+      setUser(parsedUser);
+
+      const [
+        dashboardResponse,
+        toolsResponse,
+        logsResponse,
+        financeResponse,
+        maintenancePlansResponse,
+        maintenanceRecommendationsResponse,
+      ] = await Promise.all([
         api.get("/Dashboard"),
         api.get("/Tool"),
         api.get("/ToolUsageLog"),
+        api.get("/Finance/summary"),
+        api.get("/MaintenancePlan"),
+        api.get("/MaintenancePlan/recommendations"),
       ]);
 
-    setData(dashboardResponse.data);
-    setTools(toolsResponse.data);
-    setLogs(logsResponse.data);
-    setLastUpdate(new Date().toLocaleTimeString("tr-TR"));
-  } catch (error: any) {
-    console.error(error);
+      setData(dashboardResponse.data);
+      setTools(toolsResponse.data);
+      setLogs(logsResponse.data);
+      setFinanceSummary(financeResponse.data);
+      setMaintenancePlans(maintenancePlansResponse.data);
+      setMaintenanceRecommendations(maintenanceRecommendationsResponse.data);
+      setLastUpdate(new Date().toLocaleTimeString("tr-TR"));
+    } catch (error: any) {
+      console.error(error);
 
-    if (error.response?.status === 401) {
-      localStorage.removeItem("user");
-      toast.error("Oturum süresi doldu. Tekrar giriş yapınız.");
+      if (error.response?.status === 401) {
+        localStorage.removeItem("user");
+        toast.error("Oturum süresi doldu. Tekrar giriş yapınız.");
 
-      setTimeout(() => {
-        router.push("/login");
-      }, 800);
+        setTimeout(() => {
+          router.push("/login");
+        }, 800);
 
-      return;
+        return;
+      }
+
+      toast.error("Dashboard verileri yüklenemedi.");
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    toast.error("Dashboard verileri yüklenemedi!");
-  } finally {
-    setIsLoading(false);
-  }
-};
-
- useEffect(() => {
-  const storedUser = localStorage.getItem("user");
-
-  if (!storedUser) {
-    router.push("/login");
-    setIsLoading(false);
-    return;
-  }
-
-  const parsedUser = JSON.parse(storedUser);
-
-  const token =
-    parsedUser.token ||
-    parsedUser.Token ||
-    parsedUser.accessToken ||
-    parsedUser.AccessToken;
-
-  if (!token) {
-    localStorage.removeItem("user");
-    router.push("/login");
-    setIsLoading(false);
-    return;
-  }
-
-  setUser(parsedUser);
-  fetchDashboardData();
-}, [router]);
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
 
   useEffect(() => {
     const startSignalR = async () => {
@@ -175,32 +354,108 @@ const fetchDashboardData = async () => {
 
     startSignalR();
 
-    connection.on("ToolUsageAdded", (eventData: ToolUsageAddedEvent) => {
+    connection.on("ToolLifeTick", (eventData: ToolLifeTickEvent) => {
       setTools((prevTools) =>
         prevTools.map((tool) =>
           tool.id === eventData.toolId
             ? {
                 ...tool,
                 remainingLifeMinute: eventData.remainingLifeMinute,
+                totalLifeMinute: eventData.totalLifeMinute,
                 stock: eventData.stock,
                 criticalStock: eventData.criticalStock,
-                totalLifeMinute: eventData.totalLifeMinute,
+                isRunning: eventData.isRunning,
+                incomePerMinute:
+                  eventData.incomePerMinute ?? tool.incomePerMinute,
+                purchasePrice: eventData.purchasePrice ?? tool.purchasePrice,
               }
             : tool
         )
       );
 
       setLastUpdate(new Date().toLocaleTimeString("tr-TR"));
+    });
 
-      toast.success(
-        `${eventData.toolName} için ${eventData.usedMinute} dk kullanım işlendi.`
+    connection.on("ToolRunningChanged", (eventData: ToolRunningChangedEvent) => {
+      setTools((prevTools) =>
+        prevTools.map((tool) =>
+          tool.id === eventData.toolId
+            ? {
+                ...tool,
+                isRunning: eventData.isRunning,
+                startedAt: eventData.startedAt ?? null,
+                remainingLifeMinute: eventData.remainingLifeMinute,
+                incomePerMinute:
+                  eventData.incomePerMinute ?? tool.incomePerMinute,
+                purchasePrice: eventData.purchasePrice ?? tool.purchasePrice,
+              }
+            : tool
+        )
       );
 
+      setLastUpdate(new Date().toLocaleTimeString("tr-TR"));
+    });
+
+    connection.on("FinanceUpdated", (eventData: FinanceUpdatedEvent) => {
+      setFinanceSummary((prevSummary) => {
+        if (!prevSummary) {
+          return prevSummary;
+        }
+
+        return {
+          ...prevSummary,
+          wallet: {
+            ...prevSummary.wallet,
+            balance: eventData.balance,
+            totalEarned: eventData.totalEarned,
+            totalSpent: eventData.totalSpent,
+            updatedAt: eventData.updatedAt || new Date().toISOString(),
+          },
+        };
+      });
+
+      setLastUpdate(new Date().toLocaleTimeString("tr-TR"));
+    });
+
+    connection.on("ToolUpdated", () => {
+      fetchDashboardData();
+    });
+
+    connection.on("ToolCreated", () => {
+      fetchDashboardData();
+    });
+
+    connection.on("ToolDeleted", () => {
+      fetchDashboardData();
+    });
+
+    connection.on("BulkPurchaseCompleted", () => {
+      fetchDashboardData();
+    });
+
+    connection.on("MaintenancePlanCreated", () => {
+      fetchDashboardData();
+    });
+
+    connection.on("MaintenancePlanUpdated", () => {
+      fetchDashboardData();
+    });
+
+    connection.on("MaintenancePlanDeleted", () => {
       fetchDashboardData();
     });
 
     return () => {
-      connection.off("ToolUsageAdded");
+      connection.off("ToolLifeTick");
+      connection.off("ToolRunningChanged");
+      connection.off("FinanceUpdated");
+      connection.off("ToolUpdated");
+      connection.off("ToolCreated");
+      connection.off("ToolDeleted");
+      connection.off("BulkPurchaseCompleted");
+      connection.off("MaintenancePlanCreated");
+      connection.off("MaintenancePlanUpdated");
+      connection.off("MaintenancePlanDeleted");
     };
   }, []);
 
@@ -211,17 +466,43 @@ const fetchDashboardData = async () => {
     weekday: "long",
   });
 
-  const normalStockCount = tools.filter(
-    (tool) => tool.stock > tool.criticalStock
-  ).length;
+  const runningTools = useMemo(
+    () => tools.filter((tool) => tool.isRunning),
+    [tools]
+  );
 
-  const criticalStockCount = tools.filter(
-    (tool) => tool.stock <= tool.criticalStock
-  ).length;
+  const stoppedTools = useMemo(
+    () => tools.filter((tool) => !tool.isRunning),
+    [tools]
+  );
 
-  const lowLifeCount = tools.filter(
-    (tool) => tool.remainingLifeMinute < 200
-  ).length;
+  const criticalStockTools = useMemo(
+    () => tools.filter((tool) => tool.stock <= tool.criticalStock),
+    [tools]
+  );
+
+  const lowLifeTools = useMemo(
+    () => tools.filter((tool) => tool.remainingLifeMinute < 200),
+    [tools]
+  );
+
+  const activeMaintenancePlans = useMemo(
+    () =>
+      maintenancePlans.filter(
+        (plan) => plan.status === "Planlandı" || plan.status === "Devam Ediyor"
+      ),
+    [maintenancePlans]
+  );
+
+  const completedMaintenancePlans = useMemo(
+    () => maintenancePlans.filter((plan) => plan.status === "Tamamlandı"),
+    [maintenancePlans]
+  );
+
+  const highPriorityMaintenanceRecommendations = useMemo(
+    () => maintenanceRecommendations.filter((item) => item.priority === "Yüksek"),
+    [maintenanceRecommendations]
+  );
 
   const totalRemainingLife = tools.reduce(
     (total, tool) => total + tool.remainingLifeMinute,
@@ -234,144 +515,45 @@ const fetchDashboardData = async () => {
   );
 
   const averageLifePercent =
-    totalLife > 0
-      ? Math.round((totalRemainingLife / totalLife) * 100)
-      : 0;
+    totalLife > 0 ? Math.round((totalRemainingLife / totalLife) * 100) : 0;
 
-  const totalUsedMinute =
-    totalLife > totalRemainingLife ? totalLife - totalRemainingLife : 0;
-
-  const systemHealth =
-    criticalStockCount === 0 && lowLifeCount === 0
-      ? "İyi"
-      : criticalStockCount <= 2 && lowLifeCount <= 2
-      ? "Dikkat"
-      : "Kritik";
-
-  const systemHealthStyle =
-    systemHealth === "İyi"
-      ? "bg-green-100 text-green-700 border-green-200"
-      : systemHealth === "Dikkat"
-      ? "bg-yellow-100 text-yellow-700 border-yellow-200"
-      : "bg-red-100 text-red-700 border-red-200";
-
-  const criticalTools = tools.filter(
-    (tool) => tool.stock <= tool.criticalStock
+  const totalUsedMinute = logs.reduce(
+    (total, log) => total + log.usedMinute,
+    0
   );
 
-  const lowLifeTools = tools.filter(
-    (tool) => tool.remainingLifeMinute < 200
+  const totalActiveIncomePerMinute = runningTools.reduce(
+    (total, tool) => total + Number(tool.incomePerMinute || 0),
+    0
   );
 
-  const lastLogs = logs.slice(0, 5);
+  const totalStockValue = tools.reduce(
+    (total, tool) =>
+      total + Number(tool.stock || 0) * Number(tool.purchasePrice || 0),
+    0
+  );
 
-  const stockChartData = {
-    labels: tools.map((tool) => tool.toolName),
-    datasets: [
-      {
-        label: "Mevcut Stok",
-        data: tools.map((tool) => tool.stock),
-        backgroundColor: "rgba(37, 99, 235, 0.75)",
-        borderRadius: 10,
-      },
-      {
-        label: "Kritik Stok",
-        data: tools.map((tool) => tool.criticalStock),
-        backgroundColor: "rgba(239, 68, 68, 0.75)",
-        borderRadius: 10,
-      },
-    ],
-  };
+  const totalNeededBudget =
+    financeSummary?.criticalStockTools.reduce(
+      (total, tool) => total + tool.totalNeededPrice,
+      0
+    ) || 0;
 
-  const lifeChartData = {
-    labels: tools.map((tool) => tool.toolName),
-    datasets: [
-      {
-        label: "Kalan Ömür",
-        data: tools.map((tool) => tool.remainingLifeMinute),
-        backgroundColor: "rgba(34, 197, 94, 0.75)",
-        borderRadius: 10,
-      },
-      {
-        label: "Toplam Ömür",
-        data: tools.map((tool) => tool.totalLifeMinute),
-        backgroundColor: "rgba(250, 204, 21, 0.75)",
-        borderRadius: 10,
-      },
-    ],
-  };
+  const alertCount =
+    criticalStockTools.length +
+    lowLifeTools.length +
+    highPriorityMaintenanceRecommendations.length;
 
-  const stockRatioData = {
-    labels: ["Normal Stok", "Kritik Stok"],
-    datasets: [
-      {
-        data: [normalStockCount, criticalStockCount],
-        backgroundColor: [
-          "rgba(34, 197, 94, 0.85)",
-          "rgba(239, 68, 68, 0.85)",
-        ],
-        borderWidth: 0,
-      },
-    ],
-  };
+  const systemStatus =
+    alertCount === 0 ? "Normal" : alertCount <= 3 ? "Dikkat" : "Kritik";
 
-  const lifeRatioData = {
-    labels: ["Kalan Ömür", "Kullanılan Ömür"],
-    datasets: [
-      {
-        data: [totalRemainingLife, totalUsedMinute],
-        backgroundColor: [
-          "rgba(59, 130, 246, 0.85)",
-          "rgba(148, 163, 184, 0.45)",
-        ],
-        borderWidth: 0,
-      },
-    ],
-  };
+  const sortedTools = tools
+    .slice()
+    .sort((a, b) => a.remainingLifeMinute - b.remainingLifeMinute);
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: "top" as const,
-        labels: {
-          font: {
-            weight: "bold" as const,
-          },
-        },
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        grid: {
-          color: "rgba(148, 163, 184, 0.2)",
-        },
-      },
-      x: {
-        grid: {
-          display: false,
-        },
-      },
-    },
-  };
-
-  const doughnutOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    cutout: "70%",
-    plugins: {
-      legend: {
-        position: "bottom" as const,
-        labels: {
-          font: {
-            weight: "bold" as const,
-          },
-        },
-      },
-    },
-  };
+  const recentLogs = logs.slice(0, 10);
+  const recentPurchases = financeSummary?.purchaseLogs.slice(0, 10) || [];
+  const recentMaintenance = maintenancePlans.slice(0, 10);
 
   if (isLoading) {
     return (
@@ -379,12 +561,12 @@ const fetchDashboardData = async () => {
         <Toaster position="top-right" />
 
         <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-          <div className="bg-white px-10 py-8 rounded-3xl shadow text-center">
-            <h1 className="text-2xl font-black text-slate-900 mb-2">
+          <div className="bg-white px-8 py-7 rounded-3xl shadow-sm border border-slate-200 text-center">
+            <h1 className="text-xl font-black text-slate-900">
               Dashboard yükleniyor...
             </h1>
 
-            <p className="text-slate-600 font-medium">
+            <p className="text-slate-500 font-semibold mt-2">
               Sistem verileri hazırlanıyor.
             </p>
           </div>
@@ -397,404 +579,1178 @@ const fetchDashboardData = async () => {
     <>
       <Toaster position="top-right" />
 
-      <div className="min-h-screen bg-slate-100 p-10">
-        <div className="mb-8">
-          <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 rounded-3xl p-10 shadow-lg text-white overflow-hidden relative">
-            <div className="absolute -right-24 -top-24 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl" />
-            <div className="absolute right-40 bottom-0 w-52 h-52 bg-cyan-500/10 rounded-full blur-3xl" />
+      <div className="min-h-screen bg-slate-100 p-6">
+        <div className="bg-slate-950 rounded-3xl p-6 text-white shadow-sm mb-6 overflow-hidden relative">
+          <div className="absolute -right-16 -top-16 w-64 h-64 bg-blue-600/20 blur-3xl rounded-full" />
+          <div className="absolute right-44 bottom-0 w-56 h-56 bg-emerald-500/10 blur-3xl rounded-full" />
 
-            <div className="relative z-10 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-8">
-              <div>
-                <p className="text-blue-300 font-semibold mb-3">
-                  CNC Takım Yönetim Sistemi
-                </p>
-
-                <h1 className="text-5xl font-black tracking-tight mb-4">
-                  Hoş geldiniz, {user?.fullName || user?.username || "Kullanıcı"}
-                </h1>
-
-                <p className="text-slate-300 text-lg max-w-3xl leading-8">
-                  Bugünkü takım stok durumu, kritik ömür uyarıları ve kullanım
-                  hareketleri aşağıda özetlenmiştir.
-                </p>
-
-                <p className="text-slate-400 font-semibold mt-5">
-                  {today}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-[380px]">
-                <div className="bg-white/10 border border-white/10 rounded-3xl p-6">
-                  <p className="text-slate-300 font-semibold">
-                    Sistem Sağlığı
-                  </p>
-
-                  <div
-                    className={`mt-3 border rounded-2xl px-4 py-2 text-lg font-black w-fit ${systemHealthStyle}`}
-                  >
-                    {systemHealth}
-                  </div>
-                </div>
-
-                <div className="bg-white/10 border border-white/10 rounded-3xl p-6">
-                  <p className="text-slate-300 font-semibold">
-                    Ortalama Ömür
-                  </p>
-
-                  <p className="text-5xl font-black text-green-400 mt-2">
-                    %{averageLifePercent}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="relative z-10 mt-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-t border-white/10 pt-6">
-              <p className="text-slate-300 font-medium">
-                Son güncelleme:{" "}
-                <span className="font-black text-white">
-                  {lastUpdate || "Henüz yok"}
+          <div className="relative z-10 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
+            <div>
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="bg-blue-500/15 border border-blue-400/20 text-blue-200 px-3 py-1.5 rounded-full text-xs font-black">
+                  CNC ToolRoom
                 </span>
-              </p>
 
-              <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 text-green-300 px-5 py-3 rounded-2xl font-black">
-                <span className="w-3 h-3 bg-green-400 rounded-full shadow-lg shadow-green-500/50" />
-                Canlı takip aktif
-              </div>
-            </div>
-          </div>
-        </div>
+                <span className="bg-white/10 border border-white/10 text-slate-300 px-3 py-1.5 rounded-full text-xs font-bold">
+                  {today}
+                </span>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-3xl p-7 shadow-sm border border-slate-200 hover:shadow-md transition">
-            <p className="text-slate-600 font-bold">
-              Toplam Takım
-            </p>
-
-            <h2 className="text-5xl font-black text-slate-900 mt-2">
-              {data?.totalTools ?? tools.length}
-            </h2>
-
-            <p className="text-slate-600 mt-4 font-medium">
-              Sisteme kayıtlı aktif takım sayısı.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-3xl p-7 shadow-sm border border-red-200 hover:shadow-md transition">
-            <p className="text-red-600 font-bold">
-              Kritik Stok
-            </p>
-
-            <h2 className="text-5xl font-black text-red-600 mt-2">
-              {data?.criticalStockTools ?? criticalStockCount}
-            </h2>
-
-            <p className="text-slate-600 mt-4 font-medium">
-              Stok seviyesi kritik olan takımlar.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-3xl p-7 shadow-sm border border-yellow-200 hover:shadow-md transition">
-            <p className="text-yellow-700 font-bold">
-              Kritik Ömür
-            </p>
-
-            <h2 className="text-5xl font-black text-yellow-700 mt-2">
-              {data?.lowLifeTools ?? lowLifeCount}
-            </h2>
-
-            <p className="text-slate-600 mt-4 font-medium">
-              Kalan ömrü 200 dakikanın altında olanlar.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-3xl p-7 shadow-sm border border-blue-200 hover:shadow-md transition">
-            <p className="text-blue-700 font-bold">
-              Toplam Kalan Ömür
-            </p>
-
-            <h2 className="text-5xl font-black text-blue-700 mt-2">
-              {totalRemainingLife}
-            </h2>
-
-            <p className="text-slate-600 mt-4 font-medium">
-              Dakika cinsinden kullanılabilir ömür.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
-          <div className="xl:col-span-2 bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
-              <div>
-                <h2 className="text-2xl font-black text-slate-900">
-                  Stok Durumu Analizi
-                </h2>
-
-                <p className="text-slate-600 mt-1 font-medium">
-                  Mevcut stok ve kritik stok seviyelerinin karşılaştırması.
-                </p>
-              </div>
-
-              <div className="bg-blue-50 text-blue-700 px-5 py-3 rounded-2xl font-black">
-                {tools.length} takım
-              </div>
-            </div>
-
-            <div className="h-[360px]">
-              <Bar data={stockChartData} options={chartOptions} />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
-            <h2 className="text-2xl font-black text-slate-900 mb-2">
-              Stok Dağılımı
-            </h2>
-
-            <p className="text-slate-600 mb-6 font-medium">
-              Normal ve kritik stok oranı.
-            </p>
-
-            <div className="h-[260px]">
-              <Doughnut data={stockRatioData} options={doughnutOptions} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 mt-6">
-              <div className="bg-green-50 border border-green-100 rounded-2xl p-4 text-center">
-                <p className="text-green-700 font-bold">
-                  Normal
-                </p>
-
-                <p className="text-green-900 text-3xl font-black mt-1">
-                  {normalStockCount}
-                </p>
-              </div>
-
-              <div className="bg-red-50 border border-red-100 rounded-2xl p-4 text-center">
-                <p className="text-red-700 font-bold">
-                  Kritik
-                </p>
-
-                <p className="text-red-900 text-3xl font-black mt-1">
-                  {criticalStockCount}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
-          <div className="xl:col-span-2 bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
-              <div>
-                <h2 className="text-2xl font-black text-slate-900">
-                  Takım Ömür Analizi
-                </h2>
-
-                <p className="text-slate-600 mt-1 font-medium">
-                  Toplam ömür ve kalan ömür değerleri.
-                </p>
-              </div>
-
-              <div className="bg-green-50 text-green-700 px-5 py-3 rounded-2xl font-black">
-                Ortalama %{averageLifePercent}
-              </div>
-            </div>
-
-            <div className="h-[360px]">
-              <Bar data={lifeChartData} options={chartOptions} />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
-            <h2 className="text-2xl font-black text-slate-900 mb-2">
-              Ömür Kullanımı
-            </h2>
-
-            <p className="text-slate-600 mb-6 font-medium">
-              Toplam takım ömrüne göre kalan ve tüketilen oran.
-            </p>
-
-            <div className="h-[260px]">
-              <Doughnut data={lifeRatioData} options={doughnutOptions} />
-            </div>
-
-            <div className="mt-6 bg-slate-50 border border-slate-200 rounded-2xl p-5">
-              <p className="text-slate-600 font-bold">
-                Kullanılan toplam süre
-              </p>
-
-              <p className="text-slate-900 text-4xl font-black mt-2">
-                {totalUsedMinute} dk
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-200">
-              <h2 className="text-2xl font-black text-slate-900">
-                Son Kullanım Kayıtları
-              </h2>
-
-              <p className="text-slate-600 mt-1 font-medium">
-                Sisteme girilen son 5 kullanım hareketi.
-              </p>
-            </div>
-
-            <div className="p-6 space-y-4">
-              {lastLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className="bg-slate-50 border border-slate-200 rounded-2xl p-5"
+                <span
+                  className={`px-3 py-1.5 rounded-full text-xs font-black border ${
+                    systemStatus === "Normal"
+                      ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                      : systemStatus === "Dikkat"
+                      ? "bg-yellow-100 text-yellow-700 border-yellow-200"
+                      : "bg-red-100 text-red-600 border-red-200"
+                  }`}
                 >
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="font-black text-slate-900">
+                  Sistem: {systemStatus}
+                </span>
+              </div>
+
+              <h1 className="text-3xl xl:text-4xl font-black tracking-tight">
+                Operasyon ve Tablo Paneli
+              </h1>
+
+              <p className="text-slate-400 font-medium mt-2 max-w-3xl">
+                Hoş geldiniz,{" "}
+                <span className="text-white font-black">
+                  {user?.fullName || user?.username || "Kullanıcı"}
+                </span>
+                . Kartlar ve tablolar sekmeli yapıda daha düzenli gösterilir.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 min-w-[330px]">
+              <div className="bg-white/10 border border-white/10 rounded-2xl p-4">
+                <p className="text-xs text-slate-400 font-bold">
+                  Son Güncelleme
+                </p>
+
+                <p className="text-xl font-black mt-1">
+                  {lastUpdate || "Henüz yok"}
+                </p>
+              </div>
+
+              <button
+                onClick={fetchDashboardData}
+                className="bg-blue-600 hover:bg-blue-700 rounded-2xl p-4 text-left transition"
+              >
+                <RefreshCcw size={20} className="mb-2" />
+
+                <p className="text-sm font-black">Verileri Yenile</p>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-3 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+            <TabButton
+              active={activeTab === "overview"}
+              onClick={() => setActiveTab("overview")}
+              icon={BarChart3}
+              title="Genel"
+            />
+
+            <TabButton
+              active={activeTab === "tools"}
+              onClick={() => setActiveTab("tools")}
+              icon={Table2}
+              title="Takımlar"
+            />
+
+            <TabButton
+              active={activeTab === "usage"}
+              onClick={() => setActiveTab("usage")}
+              icon={History}
+              title="Kullanım"
+            />
+
+            <TabButton
+              active={activeTab === "finance"}
+              onClick={() => setActiveTab("finance")}
+              icon={Wallet}
+              title="Finans"
+            />
+
+            <TabButton
+              active={activeTab === "maintenance"}
+              onClick={() => setActiveTab("maintenance")}
+              icon={ClipboardCheck}
+              title="Bakım"
+            />
+
+            <TabButton
+              active={activeTab === "alerts"}
+              onClick={() => setActiveTab("alerts")}
+              icon={ShieldAlert}
+              title="Uyarılar"
+            />
+          </div>
+        </div>
+
+        {activeTab === "overview" && (
+          <SlideCard
+            title="Genel Bakış"
+            description="Sistemin ana durumu kartlar ve kısa tablolarla özetlenir."
+            icon={BarChart3}
+          >
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+              <MetricCard
+                title="Toplam Takım"
+                value={data?.totalTools ?? tools.length}
+                icon={Wrench}
+                color="slate"
+                subText="Kayıtlı takım"
+              />
+
+              <MetricCard
+                title="Çalışan"
+                value={runningTools.length}
+                icon={Activity}
+                color="blue"
+                subText="Aktif takım"
+              />
+
+              <MetricCard
+                title="Duran"
+                value={stoppedTools.length}
+                icon={Clock3}
+                color="purple"
+                subText="Pasif takım"
+              />
+
+              <MetricCard
+                title="Kritik Stok"
+                value={criticalStockTools.length}
+                icon={AlertTriangle}
+                color="red"
+                subText="Stok uyarısı"
+              />
+
+              <MetricCard
+                title="Kritik Ömür"
+                value={lowLifeTools.length}
+                icon={Timer}
+                color="yellow"
+                subText="< 200 dk"
+              />
+
+              <MetricCard
+                title="Ortalama Ömür"
+                value={`%${averageLifePercent}`}
+                icon={Gauge}
+                color="emerald"
+                subText="Genel oran"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              <ProTable
+                title="En Kritik Takımlar"
+                icon={Timer}
+                description="Kalan ömrü en düşük takımlar."
+              >
+                <table className="w-full min-w-[720px]">
+                  <TableHead
+                    columns={[
+                      "Takım",
+                      "Tip",
+                      "Kalan Ömür",
+                      "Ömür Oranı",
+                      "Durum",
+                    ]}
+                  />
+
+                  <tbody>
+                    {sortedTools.slice(0, 6).map((tool) => {
+                      const percent = getLifePercent(tool);
+
+                      return (
+                        <tr
+                          key={tool.id}
+                          className="border-b border-slate-100 hover:bg-slate-50"
+                        >
+                          <TableCell strong>{tool.toolName}</TableCell>
+                          <TableCell>{tool.toolType}</TableCell>
+                          <TableCell strong>{tool.remainingLifeMinute} dk</TableCell>
+                          <TableCell>
+                            <LifeBar percent={percent} />
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={getLifeStatus(tool)} />
+                          </TableCell>
+                        </tr>
+                      );
+                    })}
+
+                    {sortedTools.length === 0 && (
+                      <EmptyTableRow colSpan={5} text="Takım kaydı yok." />
+                    )}
+                  </tbody>
+                </table>
+              </ProTable>
+
+              <ProTable
+                title="Son İşlemler"
+                icon={History}
+                description="Son kullanım kayıtları."
+              >
+                <table className="w-full min-w-[650px]">
+                  <TableHead
+                    columns={["ID", "Takım", "Kullanım", "Tarih"]}
+                  />
+
+                  <tbody>
+                    {recentLogs.slice(0, 6).map((log) => (
+                      <tr
+                        key={log.id}
+                        className="border-b border-slate-100 hover:bg-slate-50"
+                      >
+                        <TableCell strong>#{log.id}</TableCell>
+                        <TableCell strong>
+                          {log.tool?.toolName || `Takım #${log.toolId}`}
+                        </TableCell>
+                        <TableCell>{log.usedMinute} dk</TableCell>
+                        <TableCell>{formatDateTime(log.usageDate)}</TableCell>
+                      </tr>
+                    ))}
+
+                    {recentLogs.length === 0 && (
+                      <EmptyTableRow colSpan={4} text="Kullanım kaydı yok." />
+                    )}
+                  </tbody>
+                </table>
+              </ProTable>
+            </div>
+          </SlideCard>
+        )}
+
+        {activeTab === "tools" && (
+          <SlideCard
+            title="Takımlar Tablosu"
+            description="Tüm takımların stok, ömür, çalışma ve maliyet bilgileri."
+            icon={Table2}
+          >
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <MetricCard
+                title="Toplam"
+                value={tools.length}
+                icon={Wrench}
+                color="slate"
+                subText="Takım"
+              />
+
+              <MetricCard
+                title="Çalışıyor"
+                value={runningTools.length}
+                icon={Activity}
+                color="blue"
+                subText="Aktif"
+              />
+
+              <MetricCard
+                title="Kritik Stok"
+                value={criticalStockTools.length}
+                icon={Package}
+                color="red"
+                subText="Riskli"
+              />
+
+              <MetricCard
+                title="Stok Değeri"
+                value={formatCurrency(totalStockValue)}
+                icon={CircleDollarSign}
+                color="green"
+                subText="Toplam"
+                small
+              />
+            </div>
+
+            <ProTable
+              title="Takım Envanteri"
+              icon={Wrench}
+              description="Takımlar profesyonel tablo görünümünde listelenir."
+            >
+              <table className="w-full min-w-[1200px]">
+                <TableHead
+                  columns={[
+                    "ID",
+                    "Takım",
+                    "Tip",
+                    "Çalışma",
+                    "Kalan Ömür",
+                    "Ömür Oranı",
+                    "Stok",
+                    "Kritik",
+                    "Gelir / dk",
+                    "Alış Fiyatı",
+                  ]}
+                />
+
+                <tbody>
+                  {tools.map((tool) => {
+                    const percent = getLifePercent(tool);
+
+                    return (
+                      <tr
+                        key={tool.id}
+                        className="border-b border-slate-100 hover:bg-slate-50"
+                      >
+                        <TableCell strong>#{tool.id}</TableCell>
+                        <TableCell strong>{tool.toolName}</TableCell>
+                        <TableCell>{tool.toolType}</TableCell>
+                        <TableCell>
+                          <StatusBadge
+                            status={tool.isRunning ? "Çalışıyor" : "Duruyor"}
+                          />
+                        </TableCell>
+                        <TableCell strong>{tool.remainingLifeMinute} dk</TableCell>
+                        <TableCell>
+                          <LifeBar percent={percent} />
+                        </TableCell>
+                        <TableCell strong>{tool.stock}</TableCell>
+                        <TableCell>{tool.criticalStock}</TableCell>
+                        <TableCell>{formatCurrency(tool.incomePerMinute)}</TableCell>
+                        <TableCell>{formatCurrency(tool.purchasePrice)}</TableCell>
+                      </tr>
+                    );
+                  })}
+
+                  {tools.length === 0 && (
+                    <EmptyTableRow colSpan={10} text="Takım kaydı yok." />
+                  )}
+                </tbody>
+              </table>
+            </ProTable>
+          </SlideCard>
+        )}
+
+        {activeTab === "usage" && (
+          <SlideCard
+            title="Kullanım Kayıtları"
+            description="Takımların kullanım geçmişi ve toplam çalışma süresi."
+            icon={History}
+          >
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <MetricCard
+                title="Toplam Kayıt"
+                value={logs.length}
+                icon={History}
+                color="slate"
+                subText="Log"
+              />
+
+              <MetricCard
+                title="Toplam Kullanım"
+                value={`${totalUsedMinute} dk`}
+                icon={Timer}
+                color="blue"
+                subText="Dakika"
+              />
+
+              <MetricCard
+                title="Çalışan Takım"
+                value={runningTools.length}
+                icon={Activity}
+                color="emerald"
+                subText="Anlık"
+              />
+
+              <MetricCard
+                title="Aktif Gelir"
+                value={formatCurrency(totalActiveIncomePerMinute)}
+                icon={TrendingUp}
+                color="green"
+                subText="Dakika başı"
+                small
+              />
+            </div>
+
+            <ProTable
+              title="Kullanım Geçmişi"
+              icon={History}
+              description="Son kullanım kayıtları listelenir."
+            >
+              <table className="w-full min-w-[850px]">
+                <TableHead
+                  columns={["ID", "Takım ID", "Takım", "Tip", "Süre", "Tarih"]}
+                />
+
+                <tbody>
+                  {logs.map((log) => (
+                    <tr
+                      key={log.id}
+                      className="border-b border-slate-100 hover:bg-slate-50"
+                    >
+                      <TableCell strong>#{log.id}</TableCell>
+                      <TableCell>#{log.toolId}</TableCell>
+                      <TableCell strong>
                         {log.tool?.toolName || `Takım #${log.toolId}`}
-                      </p>
+                      </TableCell>
+                      <TableCell>{log.tool?.toolType || "-"}</TableCell>
+                      <TableCell strong>{log.usedMinute} dk</TableCell>
+                      <TableCell>{formatDateTime(log.usageDate)}</TableCell>
+                    </tr>
+                  ))}
 
-                      <p className="text-slate-600 text-sm font-medium mt-1">
-                        {new Date(log.usageDate).toLocaleString("tr-TR")}
-                      </p>
-                    </div>
+                  {logs.length === 0 && (
+                    <EmptyTableRow colSpan={6} text="Kullanım kaydı yok." />
+                  )}
+                </tbody>
+              </table>
+            </ProTable>
+          </SlideCard>
+        )}
 
-                    <div className="bg-blue-100 text-blue-700 px-4 py-2 rounded-xl font-black">
-                      {log.usedMinute} dk
-                    </div>
-                  </div>
-                </div>
-              ))}
+        {activeTab === "finance" && (
+          <SlideCard
+            title="Finans Tablosu"
+            description="Bakiye, gelir, harcama ve satın alma kayıtları."
+            icon={Wallet}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+              <MetricCard
+                title="Bakiye"
+                value={formatCurrency(financeSummary?.wallet.balance || 0)}
+                icon={Wallet}
+                color="emerald"
+                subText="Kullanılabilir"
+                small
+              />
 
-              {lastLogs.length === 0 && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center">
-                  <p className="text-slate-600 font-bold">
-                    Henüz kullanım kaydı yok.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+              <MetricCard
+                title="Toplam Kazanç"
+                value={formatCurrency(financeSummary?.wallet.totalEarned || 0)}
+                icon={TrendingUp}
+                color="green"
+                subText="Gelir"
+                small
+              />
 
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-200">
-              <h2 className="text-2xl font-black text-slate-900">
-                Kritik Stok Uyarıları
-              </h2>
+              <MetricCard
+                title="Toplam Harcama"
+                value={formatCurrency(financeSummary?.wallet.totalSpent || 0)}
+                icon={TrendingDown}
+                color="red"
+                subText="Gider"
+                small
+              />
 
-              <p className="text-slate-600 mt-1 font-medium">
-                Stok miktarı kritik seviyede olan takımlar.
-              </p>
-            </div>
-
-            <div className="p-6 space-y-4">
-              {criticalTools.slice(0, 5).map((tool) => (
-                <div
-                  key={tool.id}
-                  className="flex items-center justify-between bg-red-50 border border-red-100 rounded-2xl p-5"
-                >
-                  <div>
-                    <p className="font-black text-slate-900">
-                      {tool.toolName}
-                    </p>
-
-                    <p className="text-slate-600 text-sm font-medium mt-1">
-                      {tool.toolType} • Kritik: {tool.criticalStock}
-                    </p>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="text-red-600 text-3xl font-black">
-                      {tool.stock}
-                    </p>
-
-                    <p className="text-red-700 text-sm font-bold">
-                      stok
-                    </p>
-                  </div>
-                </div>
-              ))}
-
-              {criticalTools.length === 0 && (
-                <div className="bg-green-50 border border-green-100 rounded-2xl p-6 text-center">
-                  <p className="text-green-700 font-black">
-                    Kritik stokta takım bulunmuyor.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-200">
-              <h2 className="text-2xl font-black text-slate-900">
-                Kritik Ömür Uyarıları
-              </h2>
-
-              <p className="text-slate-600 mt-1 font-medium">
-                Kalan ömrü düşük olan takımlar.
-              </p>
+              <MetricCard
+                title="Gerekli Bütçe"
+                value={formatCurrency(totalNeededBudget)}
+                icon={ShoppingCart}
+                color="yellow"
+                subText="Kritik stok"
+                small
+              />
             </div>
 
-            <div className="p-6 space-y-4">
-              {lowLifeTools.slice(0, 5).map((tool) => {
-                const lifePercent =
-                  tool.totalLifeMinute > 0
-                    ? Math.round(
-                        (tool.remainingLifeMinute /
-                          tool.totalLifeMinute) *
-                          100
-                      )
-                    : 0;
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-5">
+              <ProTable
+                title="Satın Alma İhtiyacı"
+                icon={ShoppingCart}
+                description="Kritik stokta satın alma gereken takımlar."
+              >
+                <table className="w-full min-w-[900px]">
+                  <TableHead
+                    columns={[
+                      "Takım",
+                      "Stok",
+                      "Kritik",
+                      "Alınacak",
+                      "Birim Fiyat",
+                      "Toplam",
+                      "Durum",
+                    ]}
+                  />
 
-                return (
-                  <div
-                    key={tool.id}
-                    className="bg-yellow-50 border border-yellow-100 rounded-2xl p-5"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <p className="font-black text-slate-900">
-                          {tool.toolName}
-                        </p>
+                  <tbody>
+                    {financeSummary?.criticalStockTools.map((tool) => (
+                      <tr
+                        key={tool.id}
+                        className="border-b border-slate-100 hover:bg-slate-50"
+                      >
+                        <TableCell strong>{tool.toolName}</TableCell>
+                        <TableCell strong>{tool.stock}</TableCell>
+                        <TableCell>{tool.criticalStock}</TableCell>
+                        <TableCell>{tool.neededQuantity}</TableCell>
+                        <TableCell>{formatCurrency(tool.purchasePrice)}</TableCell>
+                        <TableCell strong>
+                          {formatCurrency(tool.totalNeededPrice)}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge
+                            status={
+                              tool.canPurchase
+                                ? "Satın Alınabilir"
+                                : "Bakiye Yetersiz"
+                            }
+                          />
+                        </TableCell>
+                      </tr>
+                    ))}
 
-                        <p className="text-slate-600 text-sm font-medium mt-1">
-                          {tool.toolType}
-                        </p>
-                      </div>
-
-                      <div className="text-right">
-                        <p className="text-yellow-700 text-3xl font-black">
-                          {tool.remainingLifeMinute}
-                        </p>
-
-                        <p className="text-yellow-700 text-sm font-bold">
-                          dk
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="w-full bg-yellow-200 rounded-full h-3">
-                      <div
-                        className="h-3 rounded-full bg-yellow-600"
-                        style={{ width: `${lifePercent}%` }}
+                    {(financeSummary?.criticalStockTools.length || 0) === 0 && (
+                      <EmptyTableRow
+                        colSpan={7}
+                        text="Satın alma ihtiyacı yok."
                       />
-                    </div>
-                  </div>
-                );
-              })}
+                    )}
+                  </tbody>
+                </table>
+              </ProTable>
 
-              {lowLifeTools.length === 0 && (
-                <div className="bg-green-50 border border-green-100 rounded-2xl p-6 text-center">
-                  <p className="text-green-700 font-black">
-                    Kritik ömürlü takım bulunmuyor.
-                  </p>
-                </div>
-              )}
+              <ProTable
+                title="Gelir Üreten Takımlar"
+                icon={TrendingUp}
+                description="Çalışan ve gelir oluşturan takımlar."
+              >
+                <table className="w-full min-w-[700px]">
+                  <TableHead
+                    columns={["Takım", "Tip", "Kalan Ömür", "Gelir / dk"]}
+                  />
+
+                  <tbody>
+                    {financeSummary?.runningTools.map((tool) => (
+                      <tr
+                        key={tool.id}
+                        className="border-b border-slate-100 hover:bg-slate-50"
+                      >
+                        <TableCell strong>{tool.toolName}</TableCell>
+                        <TableCell>{tool.toolType}</TableCell>
+                        <TableCell strong>{tool.remainingLifeMinute} dk</TableCell>
+                        <TableCell>{formatCurrency(tool.incomePerMinute)}</TableCell>
+                      </tr>
+                    ))}
+
+                    {(financeSummary?.runningTools.length || 0) === 0 && (
+                      <EmptyTableRow
+                        colSpan={4}
+                        text="Gelir üreten aktif takım yok."
+                      />
+                    )}
+                  </tbody>
+                </table>
+              </ProTable>
             </div>
+
+            <ProTable
+              title="Satın Alma Geçmişi"
+              icon={History}
+              description="Yapılan satın alma hareketleri."
+            >
+              <table className="w-full min-w-[1000px]">
+                <TableHead
+                  columns={[
+                    "ID",
+                    "Takım",
+                    "Tip",
+                    "Adet",
+                    "Birim Fiyat",
+                    "Toplam",
+                    "Tarih",
+                  ]}
+                />
+
+                <tbody>
+                  {recentPurchases.map((purchase) => (
+                    <tr
+                      key={purchase.id}
+                      className="border-b border-slate-100 hover:bg-slate-50"
+                    >
+                      <TableCell strong>#{purchase.id}</TableCell>
+                      <TableCell strong>{purchase.toolName}</TableCell>
+                      <TableCell>{purchase.toolType}</TableCell>
+                      <TableCell>{purchase.quantity}</TableCell>
+                      <TableCell>{formatCurrency(purchase.unitPrice)}</TableCell>
+                      <TableCell strong>
+                        {formatCurrency(purchase.totalPrice)}
+                      </TableCell>
+                      <TableCell>{formatDateTime(purchase.purchaseDate)}</TableCell>
+                    </tr>
+                  ))}
+
+                  {recentPurchases.length === 0 && (
+                    <EmptyTableRow
+                      colSpan={7}
+                      text="Satın alma kaydı yok."
+                    />
+                  )}
+                </tbody>
+              </table>
+            </ProTable>
+          </SlideCard>
+        )}
+
+        {activeTab === "maintenance" && (
+          <SlideCard
+            title="Bakım ve Değişim Tabloları"
+            description="Bakım planları, öneriler ve tamamlanan bakım işlemleri."
+            icon={ClipboardCheck}
+          >
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <MetricCard
+                title="Aktif Plan"
+                value={activeMaintenancePlans.length}
+                icon={ClipboardCheck}
+                color="blue"
+                subText="Planlandı/devam"
+              />
+
+              <MetricCard
+                title="Tamamlandı"
+                value={completedMaintenancePlans.length}
+                icon={CheckCircle2}
+                color="emerald"
+                subText="Bakımı bitti"
+              />
+
+              <MetricCard
+                title="Öneri"
+                value={maintenanceRecommendations.length}
+                icon={Wrench}
+                color="yellow"
+                subText="Sistem önerisi"
+              />
+
+              <MetricCard
+                title="Yüksek Öncelik"
+                value={highPriorityMaintenanceRecommendations.length}
+                icon={ShieldAlert}
+                color="red"
+                subText="Acil"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-5">
+              <ProTable
+                title="Bakım Planları"
+                icon={ClipboardCheck}
+                description="Planlanan, devam eden ve tamamlanan bakım kayıtları."
+              >
+                <table className="w-full min-w-[1000px]">
+                  <TableHead
+                    columns={[
+                      "ID",
+                      "Takım",
+                      "Plan",
+                      "Tarih",
+                      "Durum",
+                      "Kalan Ömür",
+                      "Stok",
+                    ]}
+                  />
+
+                  <tbody>
+                    {recentMaintenance.map((plan) => (
+                      <tr
+                        key={plan.id}
+                        className="border-b border-slate-100 hover:bg-slate-50"
+                      >
+                        <TableCell strong>#{plan.id}</TableCell>
+                        <TableCell strong>{plan.toolName}</TableCell>
+                        <TableCell>{plan.title}</TableCell>
+                        <TableCell>{formatDate(plan.plannedDate)}</TableCell>
+                        <TableCell>
+                          <StatusBadge status={plan.status} />
+                        </TableCell>
+                        <TableCell strong>{plan.remainingLifeMinute} dk</TableCell>
+                        <TableCell>{plan.stock}</TableCell>
+                      </tr>
+                    ))}
+
+                    {recentMaintenance.length === 0 && (
+                      <EmptyTableRow
+                        colSpan={7}
+                        text="Bakım planı kaydı yok."
+                      />
+                    )}
+                  </tbody>
+                </table>
+              </ProTable>
+
+              <ProTable
+                title="Bakım Önerileri"
+                icon={ShieldAlert}
+                description="Sistemin kritik takım önerileri."
+              >
+                <table className="w-full min-w-[850px]">
+                  <TableHead
+                    columns={[
+                      "Takım",
+                      "Sebep",
+                      "Öncelik",
+                      "Kalan Ömür",
+                      "Stok",
+                      "Plan",
+                    ]}
+                  />
+
+                  <tbody>
+                    {maintenanceRecommendations.map((item) => (
+                      <tr
+                        key={item.id}
+                        className="border-b border-slate-100 hover:bg-slate-50"
+                      >
+                        <TableCell strong>{item.toolName}</TableCell>
+                        <TableCell>{item.reason}</TableCell>
+                        <TableCell>
+                          <StatusBadge status={item.priority} />
+                        </TableCell>
+                        <TableCell strong>
+                          {item.remainingLifeMinute} dk
+                        </TableCell>
+                        <TableCell>{item.stock}</TableCell>
+                        <TableCell>
+                          <StatusBadge
+                            status={item.hasActivePlan ? "Var" : "Yok"}
+                          />
+                        </TableCell>
+                      </tr>
+                    ))}
+
+                    {maintenanceRecommendations.length === 0 && (
+                      <EmptyTableRow
+                        colSpan={6}
+                        text="Bakım önerisi yok."
+                      />
+                    )}
+                  </tbody>
+                </table>
+              </ProTable>
+            </div>
+          </SlideCard>
+        )}
+
+        {activeTab === "alerts" && (
+          <SlideCard
+            title="Uyarı Tabloları"
+            description="Kritik stok, kritik ömür ve yüksek öncelikli bakım uyarıları."
+            icon={ShieldAlert}
+          >
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <MetricCard
+                title="Toplam Uyarı"
+                value={alertCount}
+                icon={ShieldAlert}
+                color={alertCount > 0 ? "red" : "emerald"}
+                subText={systemStatus}
+              />
+
+              <MetricCard
+                title="Kritik Stok"
+                value={criticalStockTools.length}
+                icon={Package}
+                color="red"
+                subText="Stok riski"
+              />
+
+              <MetricCard
+                title="Kritik Ömür"
+                value={lowLifeTools.length}
+                icon={Timer}
+                color="yellow"
+                subText="Ömür riski"
+              />
+
+              <MetricCard
+                title="Acil Bakım"
+                value={highPriorityMaintenanceRecommendations.length}
+                icon={ClipboardCheck}
+                color="purple"
+                subText="Öncelik"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              <ProTable
+                title="Kritik Stok Uyarıları"
+                icon={Package}
+                description="Stok seviyesi kritik seviyeye düşen takımlar."
+              >
+                <table className="w-full min-w-[700px]">
+                  <TableHead
+                    columns={["Takım", "Tip", "Mevcut Stok", "Kritik Stok"]}
+                  />
+
+                  <tbody>
+                    {criticalStockTools.map((tool) => (
+                      <tr
+                        key={tool.id}
+                        className="border-b border-slate-100 hover:bg-slate-50"
+                      >
+                        <TableCell strong>{tool.toolName}</TableCell>
+                        <TableCell>{tool.toolType}</TableCell>
+                        <TableCell strong>{tool.stock}</TableCell>
+                        <TableCell>{tool.criticalStock}</TableCell>
+                      </tr>
+                    ))}
+
+                    {criticalStockTools.length === 0 && (
+                      <EmptyTableRow
+                        colSpan={4}
+                        text="Kritik stok uyarısı yok."
+                      />
+                    )}
+                  </tbody>
+                </table>
+              </ProTable>
+
+              <ProTable
+                title="Kritik Ömür Uyarıları"
+                icon={Timer}
+                description="Kalan ömrü düşük olan takımlar."
+              >
+                <table className="w-full min-w-[750px]">
+                  <TableHead
+                    columns={["Takım", "Tip", "Kalan Ömür", "Toplam Ömür", "Oran"]}
+                  />
+
+                  <tbody>
+                    {lowLifeTools.map((tool) => (
+                      <tr
+                        key={tool.id}
+                        className="border-b border-slate-100 hover:bg-slate-50"
+                      >
+                        <TableCell strong>{tool.toolName}</TableCell>
+                        <TableCell>{tool.toolType}</TableCell>
+                        <TableCell strong>{tool.remainingLifeMinute} dk</TableCell>
+                        <TableCell>{tool.totalLifeMinute} dk</TableCell>
+                        <TableCell>
+                          <LifeBar percent={getLifePercent(tool)} />
+                        </TableCell>
+                      </tr>
+                    ))}
+
+                    {lowLifeTools.length === 0 && (
+                      <EmptyTableRow
+                        colSpan={5}
+                        text="Kritik ömür uyarısı yok."
+                      />
+                    )}
+                  </tbody>
+                </table>
+              </ProTable>
+            </div>
+          </SlideCard>
+        )}
+      </div>
+    </>
+  );
+}
+
+function colorClasses(color: CardColor) {
+  const colors = {
+    slate: {
+      border: "border-slate-200",
+      bg: "bg-slate-50",
+      text: "text-slate-900",
+      icon: "text-slate-700",
+    },
+    blue: {
+      border: "border-blue-200",
+      bg: "bg-blue-50",
+      text: "text-blue-700",
+      icon: "text-blue-700",
+    },
+    red: {
+      border: "border-red-200",
+      bg: "bg-red-50",
+      text: "text-red-600",
+      icon: "text-red-600",
+    },
+    yellow: {
+      border: "border-yellow-200",
+      bg: "bg-yellow-50",
+      text: "text-yellow-700",
+      icon: "text-yellow-700",
+    },
+    emerald: {
+      border: "border-emerald-200",
+      bg: "bg-emerald-50",
+      text: "text-emerald-700",
+      icon: "text-emerald-700",
+    },
+    green: {
+      border: "border-green-200",
+      bg: "bg-green-50",
+      text: "text-green-700",
+      icon: "text-green-700",
+    },
+    purple: {
+      border: "border-purple-200",
+      bg: "bg-purple-50",
+      text: "text-purple-700",
+      icon: "text-purple-700",
+    },
+  };
+
+  return colors[color];
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon: Icon,
+  title,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: ElementType;
+  title: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-2xl px-4 py-4 font-black transition flex items-center justify-center gap-2 ${
+        active
+          ? "bg-blue-600 text-white shadow-sm"
+          : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+      }`}
+    >
+      <Icon size={20} />
+      <span className="text-sm">{title}</span>
+    </button>
+  );
+}
+
+function SlideCard({
+  title,
+  description,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  description: string;
+  icon: ElementType;
+  children: ReactNode;
+}) {
+  return (
+    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="p-5 border-b border-slate-200 flex items-center gap-3">
+        <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-800 flex items-center justify-center">
+          <Icon size={24} />
+        </div>
+
+        <div>
+          <h2 className="text-2xl font-black text-slate-900">{title}</h2>
+
+          <p className="text-slate-500 font-semibold">{description}</p>
+        </div>
+      </div>
+
+      <div className="p-5">{children}</div>
+    </div>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  icon: Icon,
+  color,
+  subText,
+  small = false,
+}: {
+  title: string;
+  value: string | number;
+  icon: ElementType;
+  color: CardColor;
+  subText: string;
+  small?: boolean;
+}) {
+  const classes = colorClasses(color);
+
+  return (
+    <div
+      className={`bg-white rounded-3xl p-5 shadow-sm border ${classes.border}`}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-slate-500 text-sm font-black">{title}</p>
+
+        <div
+          className={`w-10 h-10 rounded-2xl ${classes.bg} ${classes.icon} flex items-center justify-center`}
+        >
+          <Icon size={20} />
+        </div>
+      </div>
+
+      <h2
+        className={`font-black ${classes.text} ${
+          small ? "text-2xl" : "text-3xl"
+        }`}
+      >
+        {value}
+      </h2>
+
+      <p className="text-slate-500 text-xs font-bold mt-2">{subText}</p>
+    </div>
+  );
+}
+
+function ProTable({
+  title,
+  description,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  description: string;
+  icon: ElementType;
+  children: ReactNode;
+}) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+      <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 text-slate-700 flex items-center justify-center">
+            <Icon size={20} />
+          </div>
+
+          <div>
+            <h3 className="font-black text-slate-900">{title}</h3>
+
+            <p className="text-sm text-slate-500 font-semibold">
+              {description}
+            </p>
           </div>
         </div>
       </div>
-    </>
+
+      <div className="overflow-x-auto">{children}</div>
+    </div>
+  );
+}
+
+function TableHead({ columns }: { columns: string[] }) {
+  return (
+    <thead className="bg-slate-950 text-white">
+      <tr>
+        {columns.map((column) => (
+          <th
+            key={column}
+            className="px-4 py-4 text-left text-xs uppercase tracking-wide whitespace-nowrap"
+          >
+            {column}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+}
+
+function TableCell({
+  children,
+  strong = false,
+}: {
+  children: ReactNode;
+  strong?: boolean;
+}) {
+  return (
+    <td
+      className={`px-4 py-4 text-sm whitespace-nowrap ${
+        strong ? "font-black text-slate-900" : "font-semibold text-slate-600"
+      }`}
+    >
+      {children}
+    </td>
+  );
+}
+
+function EmptyTableRow({
+  colSpan,
+  text,
+}: {
+  colSpan: number;
+  text: string;
+}) {
+  return (
+    <tr>
+      <td
+        colSpan={colSpan}
+        className="px-4 py-10 text-center text-slate-500 font-black"
+      >
+        {text}
+      </td>
+    </tr>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const normalized = status.toLowerCase();
+
+  let className = "bg-slate-100 text-slate-700";
+
+  if (
+    normalized.includes("çalışıyor") ||
+    normalized.includes("iyi") ||
+    normalized.includes("tamamlandı") ||
+    normalized.includes("satın alınabilir") ||
+    normalized === "var"
+  ) {
+    className = "bg-emerald-100 text-emerald-700";
+  }
+
+  if (
+    normalized.includes("duruyor") ||
+    normalized.includes("planlandı") ||
+    normalized === "yok"
+  ) {
+    className = "bg-blue-100 text-blue-700";
+  }
+
+  if (
+    normalized.includes("dikkat") ||
+    normalized.includes("devam") ||
+    normalized.includes("orta")
+  ) {
+    className = "bg-yellow-100 text-yellow-700";
+  }
+
+  if (
+    normalized.includes("kritik") ||
+    normalized.includes("yüksek") ||
+    normalized.includes("yetersiz") ||
+    normalized.includes("iptal")
+  ) {
+    className = "bg-red-100 text-red-600";
+  }
+
+  return (
+    <span
+      className={`px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap ${className}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function LifeBar({ percent }: { percent: number }) {
+  let color = "bg-emerald-500";
+
+  if (percent < 20) {
+    color = "bg-red-500";
+  } else if (percent < 50) {
+    color = "bg-yellow-500";
+  }
+
+  return (
+    <div className="min-w-[150px]">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs text-slate-500 font-black">Ömür</span>
+
+        <span className="text-xs text-slate-900 font-black">%{percent}</span>
+      </div>
+
+      <div className="w-full bg-slate-200 rounded-full h-2.5">
+        <div
+          className={`h-2.5 rounded-full ${color}`}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
   );
 }

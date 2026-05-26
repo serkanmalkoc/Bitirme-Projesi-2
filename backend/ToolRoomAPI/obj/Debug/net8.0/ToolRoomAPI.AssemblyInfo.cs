@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ToolRoomAPI")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+709767cbd995e5c03b639d362c669c3587092a31")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f152885739ebb3f84c745790dd5523417bc7a501")]
 [assembly: System.Reflection.AssemblyProductAttribute("ToolRoomAPI")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ToolRoomAPI")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ToolRoomAPI.Data;
 
@@ -11,9 +12,11 @@ using ToolRoomAPI.Data;
 namespace ToolRoomAPI.Migrations
 {
     [DbContext(typeof(ToolRoomDbContext))]
-    partial class ToolRoomDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260525144010_AddFinanceAndPurchaseSystem")]
+    partial class AddFinanceAndPurchaseSystem
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,45 +24,6 @@ namespace ToolRoomAPI.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
-
-            modelBuilder.Entity("ToolRoomAPI.Models.MaintenancePlan", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime>("PlannedDate")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("ToolId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ToolId");
-
-                    b.ToTable("MaintenancePlans");
-                });
 
             modelBuilder.Entity("ToolRoomAPI.Models.PurchaseLog", b =>
                 {
@@ -219,17 +183,6 @@ namespace ToolRoomAPI.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Wallets");
-                });
-
-            modelBuilder.Entity("ToolRoomAPI.Models.MaintenancePlan", b =>
-                {
-                    b.HasOne("ToolRoomAPI.Models.Tool", "Tool")
-                        .WithMany()
-                        .HasForeignKey("ToolId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Tool");
                 });
 
             modelBuilder.Entity("ToolRoomAPI.Models.PurchaseLog", b =>

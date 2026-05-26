@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ToolRoomAPI.Data;
 
@@ -11,9 +12,11 @@ using ToolRoomAPI.Data;
 namespace ToolRoomAPI.Migrations
 {
     [DbContext(typeof(ToolRoomDbContext))]
-    partial class ToolRoomDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260526100543_AddMaintenancePlanModule")]
+    partial class AddMaintenancePlanModule
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
